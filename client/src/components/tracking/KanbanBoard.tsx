@@ -6,7 +6,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { cn, stageLabel, stageColor, stageStatusLabel, stageStatusColor, formatDate } from '@/lib/utils';
 import type { ApplicationV2, ApplicationStage, StageInfo } from '@/types';
 import { APP_STAGES } from '@/types';
-import { MoreHorizontal, Plus, Edit3, Trash2 } from 'lucide-react';
+import { Plus, Edit3, Trash2, Calendar } from 'lucide-react';
 
 interface Props { applications: ApplicationV2[]; onMove: (appId: string, to: ApplicationStage) => void; onEdit: (app: ApplicationV2) => void; onDelete: (id: string) => void; onAdd: () => void; }
 
@@ -54,6 +54,7 @@ export function KanbanBoard({ applications, onMove, onEdit, onDelete, onAdd }: P
                         <p className="text-xs text-gray-500 truncate">{app.position}</p>
                         {app.city && <p className="text-xs text-gray-400 mt-0.5">{app.city}</p>}
                         <div className="flex flex-col gap-0.5 mt-2">
+                          {app.appliedAt && <span className="text-[10px] text-gray-400 flex items-center gap-1"><Calendar className="w-2.5 h-2.5" />{app.appliedAt}</span>}
                           {app.stages?.filter(s => s.status === 'passed' || s.status === 'current').slice(0, 3).map((s, i) => (
                             <span key={i} className={cn('text-[10px]', stageStatusColor(s.status))}>{stageLabel(s.stage)} {s.timestamp?.slice(0, 10)}</span>
                           ))}

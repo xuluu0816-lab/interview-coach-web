@@ -55,7 +55,7 @@ export async function deleteFile(id: string): Promise<void> { return request(`/f
 
 // ========== 投递记录 ==========
 export async function getApplications(): Promise<ApplicationV2[]> { return request('/applications'); }
-export async function createApplicationV2(data: { company: string; position: string; city?: string; appliedAt?: string; notes?: string; url?: string }): Promise<ApplicationV2> { return request('/applications', { method: 'POST', body: JSON.stringify({ ...data, status: 'resume_screening' }) }); }
+export async function createApplicationV2(data: { company: string; position: string; city?: string; appliedAt?: string; notes?: string; url?: string; stages?: any[]; currentStage?: string }): Promise<ApplicationV2> { return request('/applications', { method: 'POST', body: JSON.stringify({ ...data, status: 'resume_screening' }) }); }
 export async function updateApplication(id: string, data: Partial<ApplicationV2>): Promise<ApplicationV2> { return request(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
 export async function updateApplicationStage(id: string, stage: string, info: Record<string, any>): Promise<ApplicationV2> { return request(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify({ currentStage: stage, stageInfo: info }) }); }
 export async function deleteApplication(id: string): Promise<void> { return request(`/applications/${id}`, { method: 'DELETE' }); }

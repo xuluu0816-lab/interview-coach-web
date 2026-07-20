@@ -22,7 +22,14 @@ export function JdAnalyzer() {
     try {
       const uploaded = await uploadFile(file);
       const detail = await getFileDetail(uploaded.id);
-      if (detail.parsed_text) setJdText(detail.parsed_text);
+      if (detail.parsed_text) {
+        // 图片文件暂无法OCR提取文字，提示用户手动粘贴
+        if (detail.parsed_text.startsWith('[图片文件]') || detail.parsed_text.startsWith('[音视频')) {
+          alert('📷 图片已上传，但暂不支持OCR提取文字。请在文本框中手动粘贴JD内容。');
+        } else {
+          setJdText(detail.parsed_text);
+        }
+      }
     } catch (err: any) { alert('文件解析失败：' + err.message); }
     finally { setLoading(false); }
   };
@@ -60,7 +67,7 @@ export function JdAnalyzer() {
           <CardContent className="space-y-3">
             <Textarea className="min-h-[200px]" placeholder="粘贴岗位JD的纯文本内容..." value={jdText} onChange={e => setJdText(e.target.value)} />
             <div className="flex items-center gap-3">
-              <label className="cursor-pointer inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"><Upload className="w-4 h-4" />上传JD文件<input type="file" className="hidden" accept=".txt,.pdf,.docx" onChange={handleFileUpload} /></label>
+              <label className="cursor-pointer inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"><Upload className="w-4 h-4" />上传JD文件<input type="file" className="hidden" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg" onChange={handleFileUpload} /></label>
               <Button onClick={handleAnalyze} disabled={!jdText.trim() || loading}>{loading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}AI生成分析</Button>
             </div>
           </CardContent>

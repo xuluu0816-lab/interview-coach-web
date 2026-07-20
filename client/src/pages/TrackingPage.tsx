@@ -28,7 +28,18 @@ export default function TrackingPage() {
 
   const handleSave = async () => {
     if (!form.company || !form.position) return;
-    if (editing) { await updateApplication(editing.id, form as any); } else { await createApplicationV2(form); }
+    const now = new Date().toISOString();
+    if (editing) {
+      await updateApplication(editing.id, form as any);
+    } else {
+      // 新建时自动记录投递日期 + 第一阶段时间戳
+      const initialStages: StageInfo[] = APP_STAGES.map((s, i) => ({
+        stage: s,
+        status: i === 0 ? 'current' as const : 'pending' as const,
+        timestamp: i === 0 ? now : undefined,
+      }));
+      await createApplicationV2({ ...form, appliedAt: now.slice(0, 10), stages: initialStages, currentStage: 'resume_screening' } as any);
+    }
     setDialogOpen(false); setEditing(null); setForm({ company: '', position: '', city: '', url: '', notes: '' }); load();
   };
 
