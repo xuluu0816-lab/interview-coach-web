@@ -1,13 +1,14 @@
 /**
  * API 请求封装
- * 包含 SSE 流式请求支持
+ * 自动检测环境：开发环境用 proxy，生产环境用环境变量指定的后端地址
  */
 import type {
   Session, InterviewQuestion, QuestionBankItem, UploadedFile,
   ReviewReport, ProgressReport, Application, ResumeAnalysis, JdAnalysis,
 } from '@/types';
 
-const BASE_URL = '/api';
+// 生产环境从环境变量读取，开发环境使用 Vite proxy
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 // ========== 基础 fetch 封装 ==========
 
