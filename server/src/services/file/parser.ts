@@ -6,6 +6,32 @@ import path from 'path';
 import { FileType } from '../../types';
 
 /**
+ * 调用 OCR.space 免费 API 识别图片文字
+ * 免费版：500次/天，无需 API Key
+ */
+async function ocrImage(filePath: string): Promise<string> {
+  const FormData = require('form-data');
+  const fileBuffer = fs.readFileSync(filePath);
+  const form = new FormData();
+  form.append('file', fileBuffer, { filename: path.basename(filePath), contentType: 'image/png' });
+  form.append('language', 'chs'); // 简体中文
+  form.append('isOverlayRequired', 'false');
+  form.append('OCREngine', '2'); // 更准确的引擎
+
+  const res = await fetch('https://api.ocr.space/parse/image', {
+    method: 'POST',
+    headers: { 'apikey': 'helloworld', ...form.getHeaders() },
+    body: form.getBuffer(),
+  });
+
+  if (!res.ok) throw new Error(`OCR API error: ${res.status}`);
+  const data = await res.json() as any;
+  const text = data?.ParsedResults?.[0]?.ParsedText || '';
+  if (!text.trim()) throw new Error('OCR 未能识别到文字，请确认图片清晰度');
+  return text.trim();
+}
+
+/**
  * 解析文本文件（txt）
  */
 async function parseTxt(filePath: string): Promise<string> {
@@ -79,8 +105,7 @@ export async function parseFile(filePath: string, fileType: FileType): Promise<s
       return parseDocx(filePath);
     case 'png':
     case 'jpg':
-      // 图片 OCR 在第二阶段实现（前端 tesseract.js）
-      return '[图片文件] 图片 OCR 功能将在第二阶段上线。当前阶段请手动输入图片中的文字内容。';
+      return ocrImage(filePath);
     case 'mp3':
     case 'mp4':
       // 音视频转写将在第二阶段实现（OpenAI Whisper API）

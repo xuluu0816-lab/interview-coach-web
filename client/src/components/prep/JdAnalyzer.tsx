@@ -15,42 +15,18 @@ export function JdAnalyzer() {
   const [result, setResult] = useState<JdPrepResult | null>(null);
   const [step, setStep] = useState<'input' | 'analyzing' | 'result'>('input');
   const [activeTab, setActiveTab] = useState('framework');
-  const [ocrProgress, setOcrProgress] = useState(0);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     setLoading(true);
     try {
-      const isImage = file.type === 'image/png' || file.type === 'image/jpeg' || file.name.match(/\.(png|jpg|jpeg)$/i);
-
-      if (isImage) {
-        // 浏览器端 OCR — 动态加载 tesseract.js CDN 避免构建打包问题
-        const tesseractUrl = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-        if (!(window as any).Tesseract) {
-          await new Promise<void>((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = tesseractUrl;
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error('OCR 组件加载失败'));
-            document.head.appendChild(script);
-          });
-        }
-        const T = (window as any).Tesseract;
-        const imageUrl = URL.createObjectURL(file);
-        const { data: { text } } = await T.recognize(imageUrl, 'chi_sim+eng', {
-          logger: (m: { status: string; progress: number }) => { if (m.status === 'recognizing text') setOcrProgress(Math.round(m.progress * 100)); },
-        });
-        URL.revokeObjectURL(imageUrl);
-        if (text.trim()) {
-          setJdText(text.trim());
-        } else {
-          alert('OCR 未能识别到文字，请确认图片清晰度或手动粘贴JD内容。');
-        }
-      } else {
-        // 文档类文件走服务端解析
-        const uploaded = await uploadFile(file);
-        const detail = await getFileDetail(uploaded.id);
-        if (detail.parsed_text) setJdText(detail.parsed_text);
+      // 所有文件统一走后端上传解析（含 OCR）
+      const uploaded = await uploadFile(file);
+      const detail = await getFileDetail(uploaded.id);
+      if (detail.parsed_text && !detail.parsed_text.startsWith('[图片文件]') && !detail.parsed_text.startsWith('[音视频')) {
+        setJdText(detail.parsed_text);
+      } else if (!detail.parsed_text?.trim()) {
+        alert('未能解析到文字内容，请确认文件清晰度或手动粘贴JD内容。');
       }
     } catch (err: any) { alert('文件解析失败：' + err.message); }
     finally { setLoading(false); }
