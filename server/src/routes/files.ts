@@ -22,9 +22,24 @@ const storage = multer.diskStorage({
   filename: (_req, file, cb) => { const id = uuidv4(); const ext = path.extname(file.originalname); cb(null, `${id}${ext}`); },
 });
 
-const upload = multer({ storage, limits: { fileSize: config.upload.maxFileSize } });
+const upload = multer({
+  storage,
+  limits: { fileSize: config.upload.maxFileSize },
+  fileFilter: (_req, file, cb) => {
+    const allowed = /\.(txt|pdf|docx|doc|png|jpg|jpeg|mp3|mp4|wav|m4a|webm)$/i;
+    allowed.test(path.extname(file.originalname)) ? cb(null, true) : cb(new Error(`不支持的文件格式: ${path.extname(file.originalname)}`));
+  },
+});
 
-router.post('/upload', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/upload', (req: Request, res: Response, next: Function) => {
+  upload.single('file')(req, res, (err: any) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: true, message: `文件过大，最大 ${config.upload.maxFileSize / 1048576}MB` });
+      return res.status(400).json({ error: true, message: err.message || '上传失败' });
+    }
+    next();
+  });
+}, async (req: Request, res: Response) => {
   if (!req.file) return res.status(400).json({ error: true, message: '请选择要上传的文件' });
   const fileType = getFileType(req.file.originalname);
   let parsedText = '';
@@ -34,8 +49,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     id: uuidv4(), user_id: req.userId!, filename: req.file.originalname, file_type: fileType,
     file_size: req.file.size, parsed_text: parsedText, analysis: null, created_at: new Date().toISOString(),
   };
-  db().insert(uploadedFiles).values(fileRecord as any).run();
-  saveDb();
+  try { db().insert(uploadedFiles).values(fileRecord as any).run(); saveDb(); } catch (dbErr: any) { console.error('DB write:', dbErr.message); }
   return res.status(201).json({ ...fileRecord, parsed_text_preview: parsedText.slice(0, 500) });
 });
 

@@ -30,7 +30,7 @@ export const config = {
 
   // 文件上传
   upload: {
-    maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760', 10), // 10MB
+    maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '52428800', 10), // 50MB
     uploadDir: path.resolve(__dirname, '../uploads'),
   },
 
