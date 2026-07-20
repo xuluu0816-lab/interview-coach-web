@@ -97,7 +97,7 @@ export default function DashboardPage() {
                 <p className="text-sm text-gray-500">投递统计</p>
                 <p className="text-3xl font-bold mt-1">{stats?.total || 0}</p>
                 <p className="text-xs text-gray-400 mt-1">
-                  通过率 {stats?.pass_rate || 0}%{stats?.offer_count > 0 && ` · ${stats.offer_count} 个 Offer`}
+                  {stats?.pass_rate != null ? `通过率 ${stats.pass_rate}%` : ''}{stats?.offer_count != null && stats.offer_count > 0 ? ` · ${stats.offer_count} 个 Offer` : ''}
                 </p>
               </div>
               <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center">
@@ -136,14 +136,14 @@ export default function DashboardPage() {
       </div>
 
       {/* 最近练习 */}
-      {progress?.recent_sessions?.length > 0 && (
+      {progress && progress.recent_sessions && progress.recent_sessions.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">最近练习</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {progress.recent_sessions.slice(-5).reverse().map((s, i) => (
+              {progress && progress.recent_sessions && progress.recent_sessions.slice(-5).reverse().map((s, i) => (
                 <div key={i} className="flex items-center justify-between py-2 border-b last:border-0">
                   <div>
                     <span className="text-sm font-medium">{s.company}</span>

@@ -31,7 +31,7 @@ export default function ApplicationsPage() {
   const handleSubmit = async () => {
     if (!form.company || !form.position) return alert('公司名和岗位名不能为空');
     if (editing) {
-      await updateApplication(editing.id, form);
+      await updateApplication(editing.id, form as any);
     } else {
       await createApplication(form);
     }

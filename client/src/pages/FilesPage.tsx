@@ -75,12 +75,9 @@ export default function FilesPage() {
           <p className="text-gray-500 mt-1">上传简历、JD、面经，AI 帮你分析提炼</p>
         </div>
         <label className="cursor-pointer">
-          <Button disabled={loading} asChild>
-            <span>
-              {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-              上传文件
-            </span>
-          </Button>
+          <div className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2">
+            {loading ? <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />上传中...</span> : <span className="flex items-center gap-2"><Upload className="w-4 h-4" />上传文件</span>}
+          </div>
           <input type="file" className="hidden" onChange={handleUpload}
             accept=".txt,.pdf,.docx,.doc,.png,.jpg,.jpeg,.mp3,.mp4" />
         </label>
