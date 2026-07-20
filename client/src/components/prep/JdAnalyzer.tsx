@@ -67,7 +67,8 @@ export function JdAnalyzer() {
     setLoading(true); setStep('analyzing');
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/analyze/text', {
+      const apiBase = import.meta.env.VITE_API_URL || '/api';
+      const res = await fetch(`${apiBase}/analyze/text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ text: jdText, analysis_type: 'jd_prep' }),
