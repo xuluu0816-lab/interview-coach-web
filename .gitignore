@@ -19,6 +19,10 @@ server/uploads/*
 dist/
 build/
 *.tsbuildinfo
+*.d.ts.map
+client/vite.config.d.ts
+client/vite.config.d.ts.map
+client/vite.config.js
 
 # IDE
 .vscode/
