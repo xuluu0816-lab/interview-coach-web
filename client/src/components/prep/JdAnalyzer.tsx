@@ -7,29 +7,59 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { uploadFile, getFileDetail } from '@/lib/api';
 import type { JdPrepResult, CompanyFramework, BusinessQuestion } from '@/types';
-import { Loader2, Copy, Download, RefreshCw, Upload, FileText, Building2, Target } from 'lucide-react';
+import { Loader2, Copy, Download, RefreshCw, Upload, FileText, Building2, Target, Image } from 'lucide-react';
+import { createWorker } from 'tesseract.js';
 
 export function JdAnalyzer() {
   const [jdText, setJdText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrStatus, setOcrStatus] = useState('');
   const [result, setResult] = useState<JdPrepResult | null>(null);
   const [step, setStep] = useState<'input' | 'analyzing' | 'result'>('input');
   const [activeTab, setActiveTab] = useState('framework');
 
+  /** 图片OCR：浏览器本地 tesseract.js 识别 */
+  const handleImageOCR = async (file: File) => {
+    setOcrProgress(0); setOcrStatus('正在加载OCR引擎...');
+    const worker = await createWorker('chi_sim+eng', 1, {
+      logger: (m) => {
+        if (m.status === 'loading tesseract core') setOcrStatus('加载OCR核心...');
+        else if (m.status === 'initializing tesseract') setOcrStatus('初始化引擎...');
+        else if (m.status === 'loading language traineddata') setOcrStatus('加载中文语言包...');
+        else if (m.status === 'recognizing text') { setOcrStatus('识别文字中...'); setOcrProgress(Math.round(m.progress * 100)); }
+      },
+    });
+    const imageUrl = URL.createObjectURL(file);
+    const { data: { text } } = await worker.recognize(imageUrl);
+    await worker.terminate();
+    URL.revokeObjectURL(imageUrl);
+    return text.trim();
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
-    setLoading(true);
+    setLoading(true); setOcrStatus(''); setOcrProgress(0);
     try {
-      // 所有文件统一走后端上传解析（含 OCR）
-      const uploaded = await uploadFile(file);
-      const detail = await getFileDetail(uploaded.id);
-      if (detail.parsed_text && !detail.parsed_text.startsWith('[图片文件]') && !detail.parsed_text.startsWith('[音视频')) {
-        setJdText(detail.parsed_text);
-      } else if (!detail.parsed_text?.trim()) {
-        alert('未能解析到文字内容，请确认文件清晰度或手动粘贴JD内容。');
+      const isImage = /\.(png|jpg|jpeg)$/i.test(file.name) || file.type.startsWith('image/');
+
+      if (isImage) {
+        // 图片文件 → 浏览器本地 OCR
+        const text = await handleImageOCR(file);
+        if (text) {
+          setJdText(text);
+        } else {
+          alert('OCR未能识别到文字。请确保图片清晰、含中文字符，或手动粘贴JD内容。');
+        }
+      } else {
+        // 文档文件 → 后端上传解析
+        const uploaded = await uploadFile(file);
+        const detail = await getFileDetail(uploaded.id);
+        if (detail.parsed_text) setJdText(detail.parsed_text);
+        else alert('未能解析文件内容，请确认文件格式。');
       }
-    } catch (err: any) { alert('文件解析失败：' + err.message); }
-    finally { setLoading(false); }
+    } catch (err: any) { alert('文件处理失败：' + err.message); }
+    finally { setLoading(false); setOcrStatus(''); }
   };
 
   const handleAnalyze = async () => {
@@ -61,9 +91,15 @@ export function JdAnalyzer() {
     <div className="space-y-4">
       {step === 'input' && (
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" />JD文本输入</CardTitle><CardDescription>粘贴目标岗位JD，或上传JD文件（PDF/Word/TXT）</CardDescription></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" />JD文本输入</CardTitle><CardDescription>粘贴目标岗位JD，或上传JD文件（PDF/Word/TXT/PNG/JPG）</CardDescription></CardHeader>
           <CardContent className="space-y-3">
             <Textarea className="min-h-[200px]" placeholder="粘贴岗位JD的纯文本内容..." value={jdText} onChange={e => setJdText(e.target.value)} />
+            {ocrStatus && (
+              <div className="bg-blue-50 rounded-lg p-3 space-y-2">
+                <p className="text-sm text-blue-700 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />{ocrStatus}</p>
+                <Progress value={ocrProgress} className="h-2" />
+              </div>
+            )}
             <div className="flex items-center gap-3">
               <label className="cursor-pointer inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"><Upload className="w-4 h-4" />上传JD文件<input type="file" className="hidden" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg" onChange={handleFileUpload} /></label>
               <Button onClick={handleAnalyze} disabled={!jdText.trim() || loading}>{loading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}AI生成分析</Button>
