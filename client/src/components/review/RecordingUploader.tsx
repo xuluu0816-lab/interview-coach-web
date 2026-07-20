@@ -22,7 +22,7 @@ export function RecordingUploader({ onReady }: Props) {
       setProgress(100); setStatus('done');
       const rec: RecordingFile = { id: uploaded.id, filename: uploaded.filename, fileType: (f.name.endsWith('.mp4') ? 'mp4' : 'mp3'), fileSize: f.size, status: 'completed', transcription: uploaded.parsed_text || undefined };
       setRecording(rec); onReady(rec);
-    } catch (err: any) { setStatus('error'); setError(err.message); }
+    } catch (err: any) { setStatus('error'); setError(err.message === 'Failed to fetch' ? '后端连接超时，请稍后重试（服务器需约30秒唤醒）' : err.message); }
   };
 
   const statusIcons = { idle: <Upload className="w-10 h-10 text-gray-300" />, uploading: <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />, done: <CheckCircle className="w-10 h-10 text-green-500" />, error: <AlertCircle className="w-10 h-10 text-red-500" /> };

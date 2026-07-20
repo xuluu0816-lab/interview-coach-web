@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { RecordingUploader } from '@/components/review/RecordingUploader';
 import { ReviewReport } from '@/components/review/ReviewReport';
 import { getFileDetail } from '@/lib/api';
 import type { RecordingFile, ReviewReport as ReviewReportType } from '@/types';
-import { Save, FolderOpen, Loader2 } from 'lucide-react';
+import { Save, FolderOpen, Loader2, Wifi } from 'lucide-react';
 
 const STORAGE_KEY = 'review_records';
 
@@ -12,9 +12,23 @@ export default function ReviewPage() {
   const [recording, setRecording] = useState<RecordingFile | null>(null);
   const [report, setReport] = useState<ReviewReportType | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [backendReady, setBackendReady] = useState(false);
+  const [backendError, setBackendError] = useState('');
   const [savedRecords, setSavedRecords] = useState<RecordingFile[]>(() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
   });
+
+  // 页面加载时唤醒休眠的 Render 后端
+  useEffect(() => {
+    const apiBase = import.meta.env.VITE_API_URL || '/api';
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 50000); // 50秒超时
+
+    fetch(`${apiBase}/health`, { signal: controller.signal })
+      .then(r => { if (r.ok) setBackendReady(true); else setBackendError('服务器异常'); })
+      .catch(() => setBackendError('后端连接超时，请刷新重试'))
+      .finally(() => clearTimeout(timer));
+  }, []);
 
   const handleReady = async (rec: RecordingFile) => {
     setRecording(rec);
@@ -45,7 +59,20 @@ export default function ReviewPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div><h1 className="text-2xl font-bold">面试复盘</h1><p className="text-gray-500 text-sm mt-1">上传面试录音/录屏，AI转写并生成专业复盘报告</p></div>
 
-      <RecordingUploader onReady={handleReady} />
+      {!backendReady && !backendError && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3 text-sm text-blue-700">
+          <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+          <span>正在唤醒后端服务（免费服务器会休眠，首次唤醒约 30 秒）...</span>
+        </div>
+      )}
+      {backendError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3 text-sm text-red-700">
+          <Wifi className="w-4 h-4 flex-shrink-0" />
+          <span>{backendError}。请点击右上角刷新或稍后再试。</span>
+        </div>
+      )}
+
+      {backendReady && <RecordingUploader onReady={handleReady} />}
 
       {recording?.transcription && (
         <div>
