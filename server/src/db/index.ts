@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS applications (
   city TEXT,
   applied_at TEXT,
   status TEXT DEFAULT 'applied',
+  current_stage TEXT DEFAULT 'resume_screening',
+  stages TEXT,
   notes TEXT,
   url TEXT,
   created_at TEXT DEFAULT (datetime('now')),

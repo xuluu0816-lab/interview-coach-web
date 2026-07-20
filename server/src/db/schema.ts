@@ -59,6 +59,8 @@ export const applications = sqliteTable('applications', {
   city: text('city'),
   applied_at: text('applied_at'),
   status: text('status').default('applied').notNull(),
+  current_stage: text('current_stage').default('resume_screening'),
+  stages: text('stages'),  // JSON string: StageInfo[]
   notes: text('notes'),
   url: text('url'),
   created_at: text('created_at').default("(datetime('now'))").notNull(),
