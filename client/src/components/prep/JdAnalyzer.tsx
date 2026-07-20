@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { uploadFile, getFileDetail } from '@/lib/api';
 import type { JdPrepResult, CompanyFramework, BusinessQuestion } from '@/types';
-import { Loader2, Copy, Download, RefreshCw, Upload, FileText, Building2, Target, Image } from 'lucide-react';
+import { Loader2, Copy, Download, RefreshCw, Upload, FileText, Building2, Target } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 
 export function JdAnalyzer() {
