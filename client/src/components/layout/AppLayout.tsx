@@ -1,15 +1,14 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, FileSearch, MessageSquare, ListTodo, Briefcase, Menu } from 'lucide-react';
+import { LayoutDashboard, FileSearch, ListTodo, Briefcase, FileText, Menu } from 'lucide-react';
 
 const navItems = [
   { to: '/', label: '首页', icon: LayoutDashboard },
-  { to: '/prep', label: '面试预习', icon: FileSearch },
+  { to: '/prep', label: '面试准备', icon: FileSearch },
   { to: '/review', label: '面试复盘', icon: ListTodo },
-  { to: '/mock', label: 'AI模拟面试', icon: MessageSquare },
-  { to: '/track', label: '投递追踪', icon: ListTodo },
-  { to: '/jobs', label: '实时岗位', icon: Briefcase },
+  { to: '/track', label: '投递追踪', icon: Briefcase },
+  { to: '/jobs', label: '实时岗位', icon: FileText },
 ];
 
 export default function AppLayout() {
@@ -22,7 +21,7 @@ export default function AppLayout() {
 
       <aside className={cn('fixed inset-y-0 left-0 z-30 w-56 bg-white border-r transform transition-transform lg:translate-x-0 lg:static lg:flex lg:flex-col', sidebarOpen ? 'translate-x-0' : '-translate-x-full')}>
         <div className="flex items-center gap-2 px-5 py-4 border-b">
-          <MessageSquare className="w-5 h-5 text-primary" />
+          <FileSearch className="w-5 h-5 text-primary" />
           <span className="text-base font-bold">面试助手</span>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">

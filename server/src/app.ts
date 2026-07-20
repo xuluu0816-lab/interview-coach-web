@@ -11,6 +11,7 @@ import progressRoutes from './routes/progress';
 import fileRoutes from './routes/files';
 import applicationRoutes from './routes/applications';
 import jobRoutes from './routes/jobs';
+import analyzeRoutes from './routes/analyze';
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use('/api/progress', progressRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/applications', applicationRoutes);
 app.use('/api/jobs', jobRoutes);
+app.use('/api/analyze', analyzeRoutes);
 
 // 健康检查
 app.get('/api/health', (_req, res) => {

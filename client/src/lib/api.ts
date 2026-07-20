@@ -65,8 +65,25 @@ export async function getAppStats(): Promise<{ total: number; by_status: Record<
 export async function saveJob(id: string): Promise<void> { return request(`/jobs/${id}/save`, { method: 'POST' }); }
 export async function unsaveJob(id: string): Promise<void> { return request(`/jobs/${id}/save`, { method: 'DELETE' }); }
 
-// ===== 模块1: 预习 =====
-export async function analyzeJD(jdText: string): Promise<JdPrepResult> { return request('/prep/jd', { method: 'POST', body: JSON.stringify({ jd_text: jdText }) }); }
+// ===== 模块1: 预习 — 先上传文件再分析 =====
+export async function uploadAndAnalyzeJD(fileOrText: { file?: File; text?: string }): Promise<JdPrepResult> {
+  let parsedText = fileOrText.text || '';
+  if (fileOrText.file) {
+    const uploaded = await uploadFile(fileOrText.file);
+    const detail = await getFileDetail(uploaded.id);
+    parsedText = detail.parsed_text || '';
+  }
+  if (!parsedText.trim()) throw new Error('未能提取JD文本内容');
+  // 使用已有的 analyze 接口，传分析类型为 jd
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${BASE_URL}/files/analyze-direct`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ text: parsedText, analysis_type: 'jd_prep' }),
+  });
+  if (!res.ok) throw new Error('JD分析失败');
+  return res.json();
+}
 
 // ===== 模块4: 外部API代理 =====
 export async function fetchExternalJobs(source: string = 'su121'): Promise<ExternalJob[]> { return request(`/jobs/external?source=${source}`); }
