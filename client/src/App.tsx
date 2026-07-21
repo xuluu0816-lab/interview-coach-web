@@ -4,7 +4,6 @@ import DashboardPage from '@/pages/DashboardPage';
 import PrepPage from '@/pages/PrepPage';
 import ReviewPage from '@/pages/ReviewPage';
 import TrackingPage from '@/pages/TrackingPage';
-import JobBoardPage from '@/pages/JobBoardPage';
 import LoginPage from '@/pages/LoginPage';
 
 export default function App() {
@@ -17,7 +16,6 @@ export default function App() {
           <Route path="/prep" element={<PrepPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/track" element={<TrackingPage />} />
-          <Route path="/jobs" element={<JobBoardPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

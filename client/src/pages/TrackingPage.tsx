@@ -11,7 +11,10 @@ import { loadApplications, createApp, updateApp, removeApp } from '@/lib/storage
 import { stageLabel, stageColor, cn } from '@/lib/utils';
 import type { ApplicationV2, ApplicationStage, StageInfo } from '@/types';
 import { APP_STAGES, STAGE_OPTIONS } from '@/types';
-import { Plus, LayoutGrid, Clock } from 'lucide-react';
+import { Plus, LayoutGrid, Clock, ExternalLink, Table2 } from 'lucide-react';
+
+/** 飞书多维表格 — 实时岗位 */
+const JOB_BOARD_URL = 'https://ycnynolbv7lx.feishu.cn/base/M7p6bYxFWa3GcXscQ1HcHaAWnod?table=tbl9yRzedJi2IHX3&view=vewXjLcyvq';
 
 /** 生成唯一 ID */
 const uid = () => `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -183,6 +186,29 @@ export default function TrackingPage() {
 
   return (
     <div className="max-w-full space-y-4">
+      {/* ═══ 实时岗位模块 — 飞书多维表格 ═══ */}
+      <a
+        href={JOB_BOARD_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block"
+      >
+        <Card className="border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-white hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                <Table2 className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-blue-800 group-hover:text-blue-900">秋招实时岗位</h2>
+                <p className="text-sm text-gray-500">点击查看飞书多维表格中的最新岗位信息</p>
+              </div>
+            </div>
+            <ExternalLink className="w-5 h-5 text-blue-400 group-hover:text-blue-600 transition-colors shrink-0" />
+          </CardContent>
+        </Card>
+      </a>
+
       {/* ═══ 标题栏 ═══ */}
       <div className="flex items-center justify-between">
         <div>

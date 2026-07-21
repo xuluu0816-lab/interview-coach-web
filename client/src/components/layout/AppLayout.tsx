@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, FileSearch, ListTodo, Briefcase, FileText, Menu } from 'lucide-react';
+import { LayoutDashboard, FileSearch, ListTodo, Briefcase, Menu } from 'lucide-react';
 
 const navItems = [
   { to: '/', label: '首页', icon: LayoutDashboard },
   { to: '/prep', label: '面试准备', icon: FileSearch },
   { to: '/review', label: '面试复盘', icon: ListTodo },
   { to: '/track', label: '投递追踪', icon: Briefcase },
-  { to: '/jobs', label: '实时岗位', icon: FileText },
 ];
 
 export default function AppLayout() {

@@ -9,9 +9,12 @@
     "dev:server": "cd server && npm run dev",
     "build": "cd client && npm run build && cd ../server && npm run build",
     "db:seed": "cd server && npm run db:seed",
-    "db:migrate": "cd server && npm run db:migrate"
+    "db:migrate": "cd server && npm run db:migrate",
+"fetch:jobs": "node scripts/fetchFeishuJobs.js"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "axios": "^1.18.1",
+    "concurrently": "^8.2.2",
+    "dayjs": "^1.11.21"
   }
 }
