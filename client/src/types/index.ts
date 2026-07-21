@@ -34,7 +34,8 @@ export interface InterviewConfig { company: string; role: string; level: Experie
 export interface CompanyFramework { overview: string; businessLines: string[]; competitors: string[]; recentNews: string[]; culture: string; interviewStyle: string; }
 export interface BusinessQuestion { id: string; scenario: string; question: string; category: string; referenceAnswer: string; }
 export interface JdPrepResult { companyFramework: CompanyFramework; businessQuestions: BusinessQuestion[]; generatedAt: string; }
-export interface RecordingFile { id: string; filename: string; fileType: 'mp3' | 'mp4' | 'wav'; fileSize: number; duration?: number; status: 'uploading' | 'transcribing' | 'completed' | 'error'; transcription?: string; questions?: ExtractedQuestion[]; report?: ReviewReport; }
+export interface QAPair { id: string; question: string; answer: string; startTime?: number; endTime?: number; }
+export interface RecordingFile { id: string; filename: string; fileType: 'mp3' | 'mp4' | 'wav'; fileSize: number; duration?: number; status: 'uploading' | 'transcribing' | 'completed' | 'error'; transcription?: string; questions?: ExtractedQuestion[]; report?: ReviewReport; qaPairs?: QAPair[]; segments?: import('@/lib/stt').WhisperSegment[]; }
 export interface ExtractedQuestion { index: number; timestamp?: string; questionText: string; answerText?: string; interviewerNotes?: string; }
 
 // ===== 模块2: AI模拟面试 =====

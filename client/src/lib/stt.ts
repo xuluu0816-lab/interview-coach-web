@@ -1,14 +1,25 @@
 /**
- * 语音转文字服务 — 多层级降级
+ * 语音转文字服务 — 多层级降级 + 停顿分割
  * ───────────────────────────────────────────
  * 优先调用 Groq 免费 Whisper API（需 VITE_GROQ_API_KEY），
  * 降级走 Render 后端中转，最终兜底手动输入。
  *
  * Groq 免费额度：14,400 次/天，14,400 秒音频/天
  * API 文档：https://console.groq.com/docs/speech-text
+ *
+ * v2: 新增 verbose_json + timestamp_granularities 支持，
+ *     通过语音段间隔检测停顿，自动将转写文字拆分为多段答案。
  */
 
+import type { QAPair } from '@/types';
+
 const GROQ_API = 'https://api.groq.com/openai/v1/audio/transcriptions';
+
+/** 默认停顿阈值（秒）—— 两段语音间隔超过此值则视为新答案段落 */
+export const DEFAULT_PAUSE_THRESHOLD = 2.5;
+
+/** 最长大间隔（秒）—— 超过此值视为录音中断而非新问题 */
+const MAX_GAP = 30;
 
 const SUPPORTED_AUDIO = new Set([
   'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav',
@@ -52,16 +63,33 @@ function getGroqKey(): string {
   }
 }
 
+// ── Whisper Segment 类型 ──
+
+export interface WhisperSegment {
+  id: number;
+  seek: number;
+  start: number;
+  end: number;
+  text: string;
+  tokens: number[];
+  temperature: number;
+  avg_logprob: number;
+  compression_ratio: number;
+  no_speech_prob: number;
+}
+
+// ── TranscribeResult ──
+
 export interface TranscribeResult {
   text: string;
   duration?: number;
   provider: 'groq' | 'manual';
   error?: string;
+  segments?: WhisperSegment[];
 }
 
 /**
- * 调用 Groq Whisper API 转写音频
- * 注意：Groq 限制文件最大 25MB，超过需先压缩
+ * 调用 Groq Whisper API 转写音频（verbose_json 模式，含段落时间戳）
  */
 async function groqTranscribe(file: File): Promise<TranscribeResult> {
   const key = getGroqKey();
@@ -74,9 +102,9 @@ async function groqTranscribe(file: File): Promise<TranscribeResult> {
   const fd = new FormData();
   fd.append('file', file);
   fd.append('model', 'whisper-large-v3');
-  // 中文为主，自动检测
   fd.append('language', 'zh');
-  fd.append('response_format', 'json');
+  fd.append('response_format', 'verbose_json');
+  fd.append('timestamp_granularities', 'segment');
   fd.append('temperature', '0');
 
   const res = await fetch(GROQ_API, {
@@ -91,18 +119,84 @@ async function groqTranscribe(file: File): Promise<TranscribeResult> {
   }
 
   const data = await res.json() as any;
+  const rawSegments: WhisperSegment[] = data.segments || [];
+
   return {
     text: data.text?.trim() || '',
     duration: data.duration,
     provider: 'groq',
+    segments: rawSegments,
   };
+}
+
+/**
+ * 根据语音停顿将 Whisper 段落分组为多个答案
+ *
+ * 算法：
+ * 1. 按时序排列段落
+ * 2. 过滤低置信度段落（no_speech_prob > 0.8）
+ * 3. 相邻段落间隔 > pauseThreshold → 新答案组
+ * 4. 间隔 > maxGap → 视为录音中断，继续当前组
+ *
+ * @param segments      Whisper 返回的段落数组
+ * @param pauseThreshold 停顿阈值（秒），默认 2.5s
+ * @returns QAPair 数组，每个元素 question 为空待用户填写
+ */
+export function groupSegmentsByPause(
+  segments: WhisperSegment[],
+  pauseThreshold: number = DEFAULT_PAUSE_THRESHOLD,
+): QAPair[] {
+  if (!segments || segments.length === 0) return [];
+
+  const sorted = [...segments].sort((a, b) => a.start - b.start);
+  const groups: WhisperSegment[][] = [];
+  let currentGroup: WhisperSegment[] = [];
+
+  for (const seg of sorted) {
+    // 跳过低置信度段落（可能是背景噪音）
+    if (seg.no_speech_prob > 0.8) continue;
+
+    if (currentGroup.length === 0) {
+      currentGroup.push(seg);
+    } else {
+      const prev = currentGroup[currentGroup.length - 1];
+      const gap = seg.start - prev.end;
+
+      if (gap > MAX_GAP) {
+        // 极长停顿：录音中断 → 提交当前组，开始新组
+        if (currentGroup.length > 0) {
+          groups.push(currentGroup);
+          currentGroup = [];
+        }
+        currentGroup.push(seg);
+      } else if (gap >= pauseThreshold) {
+        // 自然停顿 → 新答案段落
+        groups.push(currentGroup);
+        currentGroup = [seg];
+      } else {
+        // 连续说话 → 同一答案
+        currentGroup.push(seg);
+      }
+    }
+  }
+  if (currentGroup.length > 0) groups.push(currentGroup);
+
+  // 转为 QAPair
+  const ts = Date.now();
+  return groups.map((group, i) => ({
+    id: `qa_${ts}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+    question: '',
+    answer: group.map(s => s.text.trim()).join(' ').trim(),
+    startTime: group[0].start,
+    endTime: group[group.length - 1].end,
+  }));
 }
 
 /**
  * 语音转文字主入口
  *
- * @param file  音频/视频文件
- * @param onProgress  进度回调 (0-100)
+ * @param file       音频/视频文件
+ * @param onProgress 进度回调 (0-100, msg)
  * @returns 转写结果
  */
 export async function transcribe(
@@ -126,11 +220,7 @@ export async function transcribe(
       return result;
     } catch (err: any) {
       console.warn('Groq 转写失败:', err.message);
-      // 如果不是 KEY 缺失，继续尝试降级
-      if (err.message === 'GROQ_KEY_MISSING') {
-        // 没有配置 Key，跳过 Groq
-      }
-      // 其他错误也跳过，走手动输入
+      // 降级：走手动输入
     }
   }
 

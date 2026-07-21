@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { transcribe, formatSize, isMediaFile } from '@/lib/stt';
+import { transcribe, formatSize, isMediaFile, groupSegmentsByPause } from '@/lib/stt';
 import { BASE_URL } from '@/lib/api';
 import type { RecordingFile } from '@/types';
 import {
@@ -65,6 +65,11 @@ export function RecordingUploader({ onReady }: Props) {
           id: uploaded.id, filename: uploaded.filename,
           fileType: 'mp3', fileSize: f.size, status: 'completed',
           transcription: uploaded.parsed_text || undefined,
+          qaPairs: uploaded.parsed_text ? [{
+            id: `qa_${Date.now()}_0`,
+            question: '',
+            answer: uploaded.parsed_text,
+          }] : undefined,
         };
         onReady(rec);
       } catch (err: any) {
@@ -104,6 +109,12 @@ export function RecordingUploader({ onReady }: Props) {
         status: 'completed',
         transcription: result.text,
         duration: result.duration,
+        segments: result.segments || [],
+        qaPairs: result.segments && result.segments.length > 0
+          ? groupSegmentsByPause(result.segments)
+          : result.text.trim()
+            ? [{ id: `qa_${Date.now()}_0`, question: '', answer: result.text.trim() }]
+            : [],
       };
       onReady(rec);
     } catch (err: any) {
@@ -140,6 +151,11 @@ export function RecordingUploader({ onReady }: Props) {
       fileSize: 0,
       status: 'completed',
       transcription: manualText.trim(),
+      qaPairs: manualText.trim() ? [{
+        id: `qa_${now}_0`,
+        question: '',
+        answer: manualText.trim(),
+      }] : [],
     };
     onReady(rec);
   };
