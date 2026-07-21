@@ -41,9 +41,18 @@ export interface ExtractedQuestion { index: number; timestamp?: string; question
 export interface MockInterviewConfig { jdFileId?: string; resumeFileId?: string; jdText?: string; resumeText?: string; mode: 'deep_dive' | 'cross_scenario' | 'mixed'; questionCount: number; language: 'zh' | 'en'; }
 export interface RealTimeFeedback { questionId: string; scores: Scores; total: number; quickTips: string; deepDiveSuggestion?: string; }
 
-// ===== 模块3: 投递追踪 =====
-export type ApplicationStage = 'resume_screening' | 'written_test' | 'ai_interview' | 'first_round' | 'second_round' | 'final';
-export const APP_STAGES: ApplicationStage[] = ['resume_screening', 'written_test', 'ai_interview', 'first_round', 'second_round', 'final'];
+// ===== 模块3: 投递追踪（7阶段） =====
+export type ApplicationStage = 'resume_submitted' | 'written_test' | 'ai_interview' | 'first_round' | 'second_round' | 'third_round' | 'final';
+export const APP_STAGES: ApplicationStage[] = ['resume_submitted', 'written_test', 'ai_interview', 'first_round', 'second_round', 'third_round', 'final'];
+export const STAGE_OPTIONS: { value: ApplicationStage; label: string }[] = [
+  { value: 'resume_submitted', label: '简历投递' },
+  { value: 'written_test', label: '笔试' },
+  { value: 'ai_interview', label: 'AI面试' },
+  { value: 'first_round', label: '一面' },
+  { value: 'second_round', label: '二面' },
+  { value: 'third_round', label: '三面' },
+  { value: 'final', label: '终面' },
+];
 export interface StageInfo { stage: ApplicationStage; status: 'pending' | 'current' | 'passed' | 'skipped'; timestamp?: string; notes?: string; score?: number; }
 export interface ApplicationV2 { id: string; company: string; position: string; city?: string; currentStage: ApplicationStage; stages: StageInfo[]; appliedAt?: string; url?: string; notes?: string; updatedAt: string; }
 

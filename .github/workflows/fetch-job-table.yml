@@ -1,0 +1,84 @@
+# ==============================================================================
+# 飞书多维表格 → 静态 JSON 定时抓取工作流
+# ==============================================================================
+# 使用 Puppeteer 无头浏览器 + 飞书登录 Cookie 访问受限多维表格，
+# 自动提取岗位数据并提交到仓库 public/job-list.json。
+#
+# 前置条件（一次性配置）：
+#   GitHub 仓库 → Settings → Secrets and variables → Actions → 添加：
+#     FEISHU_URL     - 多维表格完整 URL（可选，默认已内置）
+#     FEISHU_COOKIE  - 飞书登录 Cookie 字符串（获取方式见下方）
+#
+# Cookie 获取步骤：
+#   1. Chrome 登录飞书 → 打开多维表格页面
+#   2. F12 → Application → Cookies → ycnynolbv7lx.feishu.cn
+#   3. 逐个复制 name=value，用 ; 拼接
+#      或者 F12 → Network → 任选一个 XHR → Request Headers → Cookie → 全选复制
+#   4. 粘贴到 GitHub Secrets（注意不要含引号或换行）
+# ==============================================================================
+
+name: Fetch Job Table
+
+on:
+  schedule:
+    # 每 6 小时（UTC 2,8,14,20 的 13 分，错峰避免整点拥堵）
+    - cron: '13 2,8,14,20 * * *'
+  workflow_dispatch:
+    # 手动触发：Actions → Fetch Job Table → Run workflow
+
+permissions:
+  contents: write        # 允许 git push
+
+jobs:
+  scrape-and-commit:
+    runs-on: ubuntu-latest
+    # 防止并行执行导致 git 冲突
+    concurrency:
+      group: fetch-job-table
+      cancel-in-progress: true
+
+    steps:
+      # ── 1. 检出仓库 ──
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. 安装 Node.js ──
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ── 3. 安装 Puppeteer ──
+      - name: Install Puppeteer
+        run: |
+          npm install puppeteer
+        working-directory: .github/scripts
+
+      # ── 4. 抓取飞书多维表格 ──
+      - name: Scrape Feishu Bitable
+        env:
+          FEISHU_URL: ${{ secrets.FEISHU_URL }}
+          FEISHU_COOKIE: ${{ secrets.FEISHU_COOKIE }}
+        run: node .github/scripts/scrape-bitable.js
+
+      # ── 5. 有变更时自动提交 ──
+      - name: Commit changes if any
+        run: |
+          if [ ! -f client/public/job-list.json ]; then
+            echo "⚠️ job-list.json 未生成，跳过提交"
+            exit 0
+          fi
+
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          git add client/public/job-list.json
+
+          if git diff --staged --quiet; then
+            echo "📭 数据无变更，跳过提交"
+          else
+            COUNT=$(node -e "console.log(require('./client/public/job-list.json').length)")
+            git commit -m "chore: 更新岗位数据 — ${COUNT} 条 [skip ci]"
+            git push
+            echo "🚀 已推送 ${COUNT} 条岗位数据"
+          fi

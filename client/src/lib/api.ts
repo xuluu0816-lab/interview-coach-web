@@ -85,5 +85,6 @@ export async function uploadAndAnalyzeJD(fileOrText: { file?: File; text?: strin
   return res.json();
 }
 
-// ===== 模块4: 外部API代理 =====
-export async function fetchExternalJobs(source: string = 'su121'): Promise<ExternalJob[]> { return request(`/jobs/external?source=${source}`); }
+// ===== 模块4: 外部岗位拉取（CORS代理 → 缓存 → 静态JSON三级降级） =====
+export { fetchJobsFromExternal, getCachedJobs } from './jobFetcher';
+export type { FetchJobsResult, JobBoardCache } from './jobFetcher';

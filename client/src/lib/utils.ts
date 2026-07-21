@@ -23,11 +23,11 @@ export function levelLabel(level: string): string { const m: Record<string, stri
 /** 题型中文 */
 export function categoryLabel(cat: QuestionCategory): string { const m: Record<string, string> = { BQ: '行为面试', CASE: '案例分析', GEN: '通用面试' }; return m[cat] || cat; }
 
-// ===== 模块3: 6阶段投递追踪 =====
+// ===== 模块3: 7阶段投递追踪 =====
 
-export function stageLabel(stage: ApplicationStage): string { const m: Record<ApplicationStage, string> = { resume_screening: '简历筛选', written_test: '笔试', ai_interview: 'AI面试', first_round: '一面', second_round: '二面', final: '终面' }; return m[stage]; }
+export function stageLabel(stage: ApplicationStage): string { const m: Record<ApplicationStage, string> = { resume_submitted: '简历投递', written_test: '笔试', ai_interview: 'AI面试', first_round: '一面', second_round: '二面', third_round: '三面', final: '终面' }; return m[stage]; }
 
-export function stageColor(stage: ApplicationStage): string { const m: Record<ApplicationStage, string> = { resume_screening: 'bg-gray-100 text-gray-700', written_test: 'bg-blue-100 text-blue-700', ai_interview: 'bg-purple-100 text-purple-700', first_round: 'bg-yellow-100 text-yellow-700', second_round: 'bg-orange-100 text-orange-700', final: 'bg-green-100 text-green-700' }; return m[stage]; }
+export function stageColor(stage: ApplicationStage): string { const m: Record<ApplicationStage, string> = { resume_submitted: 'bg-gray-100 text-gray-700', written_test: 'bg-blue-100 text-blue-700', ai_interview: 'bg-purple-100 text-purple-700', first_round: 'bg-yellow-100 text-yellow-700', second_round: 'bg-orange-100 text-orange-700', third_round: 'bg-pink-100 text-pink-700', final: 'bg-green-100 text-green-700' }; return m[stage]; }
 
 export function stageStatusLabel(status: string): string { const m: Record<string, string> = { pending: '待进行', current: '进行中', passed: '已通过', skipped: '已跳过' }; return m[status] || status; }
 

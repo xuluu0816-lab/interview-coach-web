@@ -1,0 +1,47 @@
+[
+  {
+    "id": "sample_1",
+    "company": "示例科技",
+    "position": "前端开发工程师",
+    "city": "北京",
+    "jobType": "campus",
+    "salary": "15-25K·14薪",
+    "description": "负责 Web 前端开发，参与产品架构设计。",
+    "requirements": "熟悉 React/Vue、TypeScript，有项目经验",
+    "deadline": "2026-08-31",
+    "link": "",
+    "postedAt": "2026-07-20",
+    "source": "feishu_bitable",
+    "isSaved": false
+  },
+  {
+    "id": "sample_2",
+    "company": "演示数据",
+    "position": "后端开发工程师",
+    "city": "上海",
+    "jobType": "internship",
+    "salary": "200-350元/天",
+    "description": "参与后端服务开发与优化。",
+    "requirements": "熟悉 Java/Go，了解微服务架构",
+    "deadline": "2026-09-15",
+    "link": "",
+    "postedAt": "2026-07-19",
+    "source": "feishu_bitable",
+    "isSaved": false
+  },
+  {
+    "id": "sample_3",
+    "company": "测试集团",
+    "position": "数据分析师",
+    "city": "深圳",
+    "jobType": "campus",
+    "salary": "12-20K",
+    "description": "负责业务数据分析与报表搭建。",
+    "requirements": "熟练 SQL/Python，有统计学基础",
+    "deadline": "2026-08-20",
+    "link": "",
+    "postedAt": "2026-07-18",
+    "source": "feishu_bitable",
+    "isSaved": false
+  }
+]
