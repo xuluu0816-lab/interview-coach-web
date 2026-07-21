@@ -104,7 +104,6 @@ async function groqTranscribe(file: File): Promise<TranscribeResult> {
   fd.append('model', 'whisper-large-v3');
   fd.append('language', 'zh');
   fd.append('response_format', 'verbose_json');
-  fd.append('timestamp_granularities', 'segment');
   fd.append('temperature', '0');
 
   const res = await fetch(GROQ_API, {
