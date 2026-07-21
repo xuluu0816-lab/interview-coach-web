@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { BASE_URL } from '@/lib/api';
 import type { RecordingFile } from '@/types';
 import { Upload, Loader2, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 
@@ -25,8 +26,7 @@ export function RecordingUploader({ onReady }: Props) {
 
       const token = localStorage.getItem('token');
       const fd = new FormData(); fd.append('file', f);
-      const apiBase = import.meta.env.VITE_API_URL || '/api';
-      const res = await fetch(`${apiBase}/files/upload`, {
+      const res = await fetch(`${BASE_URL}/files/upload`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: fd,

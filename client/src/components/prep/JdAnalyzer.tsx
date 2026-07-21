@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { uploadFile, getFileDetail } from '@/lib/api';
+import { uploadFile, getFileDetail, BASE_URL } from '@/lib/api';
 import type { JdPrepResult, CompanyFramework, BusinessQuestion } from '@/types';
 import { Loader2, Copy, Download, RefreshCw, Upload, FileText, Building2, Target } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
@@ -67,8 +67,7 @@ export function JdAnalyzer() {
     setLoading(true); setStep('analyzing');
     try {
       const token = localStorage.getItem('token');
-      const apiBase = import.meta.env.VITE_API_URL || '/api';
-      const res = await fetch(`${apiBase}/analyze/text`, {
+      const res = await fetch(`${BASE_URL}/analyze/text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ text: jdText, analysis_type: 'jd_prep' }),

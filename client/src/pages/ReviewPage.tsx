@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { RecordingUploader } from '@/components/review/RecordingUploader';
 import { ReviewReport } from '@/components/review/ReviewReport';
-import { getFileDetail } from '@/lib/api';
+import { getFileDetail, BASE_URL } from '@/lib/api';
 import type { RecordingFile, ReviewReport as ReviewReportType } from '@/types';
 import { Save, FolderOpen, Loader2, Wifi } from 'lucide-react';
 
@@ -20,11 +20,10 @@ export default function ReviewPage() {
 
   // 页面加载时唤醒休眠的 Render 后端
   useEffect(() => {
-    const apiBase = import.meta.env.VITE_API_URL || '/api';
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 50000); // 50秒超时
 
-    fetch(`${apiBase}/health`, { signal: controller.signal })
+    fetch(`${BASE_URL}/health`, { signal: controller.signal })
       .then(r => { if (r.ok) setBackendReady(true); else setBackendError('服务器异常'); })
       .catch(() => setBackendError('后端连接超时，请刷新重试'))
       .finally(() => clearTimeout(timer));
@@ -36,8 +35,7 @@ export default function ReviewPage() {
       setAnalyzing(true);
       try {
         const token = localStorage.getItem('token');
-        const apiBase = import.meta.env.VITE_API_URL || '/api';
-        const res = await fetch(`${apiBase}/analyze/text`, {
+        const res = await fetch(`${BASE_URL}/analyze/text`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({ text: rec.transcription, analysis_type: 'interview_review' }),

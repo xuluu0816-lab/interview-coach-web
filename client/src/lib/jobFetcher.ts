@@ -27,7 +27,8 @@ const TARGET_URL = 'https://su121.top/dgvcX';
 
 // ── 第二层：仓库静态 JSON 文件路径 ──
 // GitHub Actions 每 6 小时用 Puppeteer+Cookie 抓取飞书多维表格写入此文件
-const STATIC_JSON_PATH = '/interview-coach-web/job-list.json';
+// 使用 Vite 内置 BASE_URL，dev 模式下为 /，生产构建时为 /interview-coach-web/
+const STATIC_JSON_PATH = `${import.meta.env.BASE_URL}job-list.json`;
 
 // ── localStorage 键名 ──
 const CACHE_KEY = 'job_board_cache';
