@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/input';
+import { Input, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { RecordingUploader } from '@/components/review/RecordingUploader';
 import { ReviewReport } from '@/components/review/ReviewReport';
@@ -11,7 +11,7 @@ import type { WhisperSegment } from '@/lib/stt';
 import type { RecordingFile, ReviewReport as ReviewReportType, QAPair } from '@/types';
 import {
   Save, FolderOpen, Loader2, Copy, Download, Trash2,
-  Edit3, X, Mic, FileText, ChevronDown, ChevronUp, SlidersHorizontal,
+  Edit3, X, Mic, FileText, ChevronDown, ChevronUp, SlidersHorizontal, Pencil,
 } from 'lucide-react';
 
 const STORAGE_KEY = 'review_transcriptions';
@@ -58,6 +58,28 @@ export default function ReviewPage() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
   });
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const renameRef = useRef<HTMLInputElement>(null);
+
+  // ── 重命名历史记录 ──
+  const handleStartRename = (id: string) => {
+    setRenamingId(id);
+    setTimeout(() => renameRef.current?.select(), 50);
+  };
+
+  const handleRename = (id: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) { setRenamingId(null); return; }
+    const updated = savedRecords.map(r =>
+      r.id === id ? { ...r, filename: trimmed } : r,
+    );
+    setSavedRecords(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    if (recording?.id === id) {
+      setRecording({ ...recording, filename: trimmed });
+    }
+    setRenamingId(null);
+  };
 
   // ── Q&A 编辑器状态 ──
   const [currentQAPairs, setCurrentQAPairs] = useState<QAPair[]>([]);
@@ -390,7 +412,21 @@ export default function ReviewPage() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">{r.filename}</span>
+                      {renamingId === r.id ? (
+                        <input
+                          ref={renameRef}
+                          className="flex-1 min-w-0 h-7 px-2 text-sm border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          defaultValue={r.filename}
+                          onBlur={e => handleRename(r.id, e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleRename(r.id, e.currentTarget.value);
+                            if (e.key === 'Escape') setRenamingId(null);
+                          }}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span className="font-medium truncate">{r.filename}</span>
+                      )}
                       {r.duration && (
                         <span className="text-xs text-gray-400 shrink-0">
                           {Math.round(r.duration)}秒
@@ -415,6 +451,13 @@ export default function ReviewPage() {
                   <div className="flex items-center gap-1 shrink-0">
                     <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => handleLoadRecord(r)}>
                       查看
+                    </Button>
+                    <Button
+                      variant="ghost" size="sm" className="text-xs h-7 text-gray-400 hover:text-blue-500"
+                      onClick={() => handleStartRename(r.id)}
+                      title="重命名"
+                    >
+                      <Pencil className="w-3 h-3" />
                     </Button>
                     <Button
                       variant="ghost" size="sm" className="text-xs h-7 text-red-500"
