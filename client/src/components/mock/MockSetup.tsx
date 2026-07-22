@@ -5,142 +5,276 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
-import { createSession, parseResumeFile } from '@/lib/api';
+import { createSession, prepResumeFile, prepJDFile, cacheText, confirmPrep } from '@/lib/api';
 import type { Session, MockInterviewConfig } from '@/types';
-import { Upload, ArrowRight, FileText, User, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, ArrowRight, FileText, User, Loader2, CheckCircle, AlertCircle, X } from 'lucide-react';
 
-const RESUME_ACCEPT = '.png,.jpg,.jpeg,.pdf,.docx,.doc';
+const RESUME_ACCEPT = '.pdf,.docx,.doc,.png,.jpg,.jpeg';
 
 interface Props { onStart: (session: Session, config: MockInterviewConfig) => void; }
 
 export function MockSetup({ onStart }: Props) {
+  // ── JD ──
   const [jdText, setJdText] = useState('');
-  const [resumeText, setResumeText] = useState('');
+  const [jdFileId, setJdFileId] = useState<string | null>(null);
+  const [jdFileName, setJdFileName] = useState('');
+  const [jdUploading, setJdUploading] = useState(false);
+  const [jdStatus, setJdStatus] = useState<'idle' | 'parsing' | 'done' | 'error'>('idle');
+
+  // ── 简历 ──
+  const [resumeFileId, setResumeFileId] = useState<string | null>(null);
+  const [resumeFileName, setResumeFileName] = useState('');
+  const [resumeUploading, setResumeUploading] = useState(false);
+  const [resumeStatus, setResumeStatus] = useState<'idle' | 'parsing' | 'done' | 'error'>('idle');
+
+  // ── 面试设置 ──
   const [mode, setMode] = useState<MockInterviewConfig['mode']>('mixed');
   const [questionCount, setQuestionCount] = useState(5);
   const [language, setLanguage] = useState<'zh' | 'en'>('zh');
   const [loading, setLoading] = useState(false);
 
-  // 简历文件上传状态
-  const [uploading, setUploading] = useState(false);
-  const [uploadName, setUploadName] = useState('');
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'parsing' | 'done' | 'error'>('idle');
-  const fileRef = useRef<HTMLInputElement>(null);
+  const resumeRef = useRef<HTMLInputElement>(null);
+  const jdFileRef = useRef<HTMLInputElement>(null);
 
+  // ── 简历上传（后端本地解析 + 缓存，文本不可见）──
   const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (!['png', 'jpg', 'jpeg', 'pdf', 'docx', 'doc'].includes(ext || '')) {
-      alert('请上传 PNG / JPG / PDF / Word 格式的简历文件');
-      return;
-    }
-
-    setUploadName(file.name);
-    setUploading(true);
-    setUploadStatus('parsing');
+    setResumeFileName(file.name);
+    setResumeUploading(true);
+    setResumeStatus('parsing');
 
     try {
-      const result = await parseResumeFile(file);
-      setResumeText(result.text);
-      setUploadStatus('done');
+      const result = await prepResumeFile(file);
+      setResumeFileId(result.id);
+      setResumeStatus('done');
     } catch (err: any) {
-      setUploadStatus('error');
-      alert('简历解析失败: ' + (err.message === 'Failed to fetch'
+      setResumeStatus('error');
+      alert('简历上传失败: ' + (err.message === 'Failed to fetch'
         ? '无法连接后端服务器（免费服务器可能正在休眠，请稍后重试）'
         : err.message));
     } finally {
-      setUploading(false);
-      // 重置 input 以便重新选择同一文件
-      if (fileRef.current) fileRef.current.value = '';
+      setResumeUploading(false);
+      if (resumeRef.current) resumeRef.current.value = '';
     }
   };
 
+  const clearResume = () => {
+    setResumeFileId(null);
+    setResumeFileName('');
+    setResumeStatus('idle');
+  };
+
+  // ── JD 文件上传 ──
+  const handleJDUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setJdFileName(file.name);
+    setJdUploading(true);
+    setJdStatus('parsing');
+
+    try {
+      const result = await prepJDFile(file);
+      setJdFileId(result.id);
+      setJdText(''); // 上传文件后清除手动输入
+      setJdStatus('done');
+    } catch (err: any) {
+      setJdStatus('error');
+      alert('JD 上传失败: ' + (err.message === 'Failed to fetch'
+        ? '无法连接后端服务器（免费服务器可能正在休眠，请稍后重试）'
+        : err.message));
+    } finally {
+      setJdUploading(false);
+      if (jdFileRef.current) jdFileRef.current.value = '';
+    }
+  };
+
+  const clearJDFile = () => {
+    setJdFileId(null);
+    setJdFileName('');
+    setJdStatus('idle');
+  };
+
+  // ── 开始模拟面试 ──
   const handleStart = async () => {
     setLoading(true);
     try {
-      const session = await createSession({ jdText: jdText || undefined, resumeText: resumeText || undefined });
-      onStart(session, { jdText: jdText || undefined, resumeText: resumeText || undefined, mode, questionCount, language });
-    } catch (err: any) { alert('创建失败：' + err.message); }
-    finally { setLoading(false); }
+      let resumeText = '';
+      let jdTextFinal = '';
+
+      // ① 确认简历：读取缓存 → 智谱 AI 解析
+      if (resumeFileId) {
+        const result = await confirmPrep(resumeFileId, 'resume');
+        resumeText = result.text;
+      }
+
+      // ② 确认 JD：文件缓存 → AI 解析 / 手动粘贴 → 缓存 → AI 解析
+      if (jdFileId) {
+        const result = await confirmPrep(jdFileId, 'jd');
+        jdTextFinal = result.text;
+      } else if (jdText.trim()) {
+        // 手动粘贴的 JD 文本：先缓存，再调用 AI 解析
+        const cached = await cacheText(jdText.trim(), 'jd');
+        const result = await confirmPrep(cached.id, 'jd');
+        jdTextFinal = result.text;
+      }
+
+      const session = await createSession({
+        jdText: jdTextFinal || undefined,
+        resumeText: resumeText || undefined,
+      });
+      onStart(session, {
+        jdText: jdTextFinal || undefined,
+        resumeText: resumeText || undefined,
+        mode,
+        questionCount,
+        language,
+      });
+    } catch (err: any) {
+      alert('创建失败：' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const canStart = resumeFileId || jdFileId || jdText.trim();
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
-      <div><h2 className="text-xl font-bold">AI模拟面试配置</h2><p className="text-sm text-gray-500">上传JD和简历，AI基于真实经历深度提问</p></div>
+      <div>
+        <h2 className="text-xl font-bold">AI模拟面试配置</h2>
+        <p className="text-sm text-gray-500">
+          上传简历和JD，AI 基于真实经历深度提问。简历文本不会在前端展示，所有 AI 调用经后端中转。
+        </p>
+      </div>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="w-4 h-4" />岗位JD</CardTitle></CardHeader>
-        <CardContent><Textarea className="min-h-[150px]" placeholder="粘贴目标岗位JD内容..." value={jdText} onChange={e => setJdText(e.target.value)} /></CardContent>
-      </Card>
-
+      {/* ── JD 卡片 ── */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><User className="w-4 h-4" />个人简历</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="w-4 h-4" />岗位 JD
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* 文件上传按钮 */}
-          <div className="flex items-center gap-3">
+          {/* JD 文件上传 */}
+          <div className="flex items-center gap-3 flex-wrap">
             <label className="cursor-pointer">
               <input
-                ref={fileRef}
+                ref={jdFileRef}
                 type="file"
                 className="hidden"
                 accept={RESUME_ACCEPT}
-                onChange={handleResumeUpload}
-                disabled={uploading}
+                onChange={handleJDUpload}
+                disabled={jdUploading}
               />
               <Button
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
-                disabled={uploading}
-                onClick={(e) => { e.preventDefault(); fileRef.current?.click(); }}
+                disabled={jdUploading}
+                onClick={(e) => { e.preventDefault(); jdFileRef.current?.click(); }}
               >
-                {uploading ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Upload className="w-3.5 h-3.5" />
-                )}
-                上传简历文件
+                {jdUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                上传 JD 文件
               </Button>
             </label>
+            <span className="text-xs text-gray-400">PDF / Word / 图片 · 本地解析</span>
 
-            <span className="text-xs text-gray-400">
-              支持 PNG / JPG / PDF / Word · AI 直接解析
-            </span>
-
-            {uploadStatus === 'parsing' && (
+            {jdStatus === 'parsing' && (
               <span className="text-xs text-blue-500 flex items-center gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                {uploadName}
+                <Loader2 className="w-3 h-3 animate-spin" />{jdFileName}
               </span>
             )}
-            {uploadStatus === 'done' && (
-              <span className="text-xs text-green-600 flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" />
-                {uploadName} 解析完成
-              </span>
+            {jdStatus === 'done' && jdFileName && (
+              <Badge variant="secondary" className="gap-1 text-xs">
+                <CheckCircle className="w-3 h-3 text-green-600" />
+                {jdFileName}
+                <X className="w-3 h-3 cursor-pointer ml-0.5 hover:text-red-500" onClick={clearJDFile} />
+              </Badge>
             )}
-            {uploadStatus === 'error' && (
+            {jdStatus === 'error' && (
               <span className="text-xs text-red-500 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />
-                解析失败
+                <AlertCircle className="w-3 h-3" />解析失败
+                <X className="w-3 h-3 cursor-pointer hover:text-red-700" onClick={clearJDFile} />
               </span>
             )}
           </div>
 
-          {/* 简历文本编辑 */}
-          <Textarea
-            className="min-h-[200px]"
-            placeholder="粘贴简历内容，或点击上方按钮上传简历文件（AI直接解析PNG/JPG/PDF/Word）..."
-            value={resumeText}
-            onChange={e => setResumeText(e.target.value)}
-          />
+          {/* 或手动粘贴 */}
+          {!jdFileId && (
+            <Textarea
+              className="min-h-[120px]"
+              placeholder="或直接粘贴岗位 JD 文本..."
+              value={jdText}
+              onChange={e => setJdText(e.target.value)}
+            />
+          )}
         </CardContent>
       </Card>
 
+      {/* ── 简历卡片 ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <User className="w-4 h-4" />个人简历
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="cursor-pointer">
+              <input
+                ref={resumeRef}
+                type="file"
+                className="hidden"
+                accept={RESUME_ACCEPT}
+                onChange={handleResumeUpload}
+                disabled={resumeUploading}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={resumeUploading}
+                onClick={(e) => { e.preventDefault(); resumeRef.current?.click(); }}
+              >
+                {resumeUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                上传简历文件
+              </Button>
+            </label>
+            <span className="text-xs text-gray-400">PDF / Word / 图片 · 本地 OCR 解析 · 内容不会在前端展示</span>
+
+            {resumeStatus === 'parsing' && (
+              <span className="text-xs text-blue-500 flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />{resumeFileName}
+              </span>
+            )}
+            {resumeStatus === 'done' && resumeFileName && (
+              <Badge variant="secondary" className="gap-1 text-xs">
+                <CheckCircle className="w-3 h-3 text-green-600" />
+                {resumeFileName}
+                <X className="w-3 h-3 cursor-pointer ml-0.5 hover:text-red-500" onClick={clearResume} />
+              </Badge>
+            )}
+            {resumeStatus === 'error' && (
+              <span className="text-xs text-red-500 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />解析失败
+                <X className="w-3 h-3 cursor-pointer hover:text-red-700" onClick={clearResume} />
+              </span>
+            )}
+          </div>
+
+          {!resumeFileId && (
+            <p className="text-xs text-gray-400">
+              请上传简历文件（PDF / Word / PNG / JPG），上传后仅显示文件名，原始文本不在前端展示。
+              点击"开始AI模拟面试"后，后端才会调用智谱大模型进行解析。
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── 面试设置 ── */}
       <Card>
         <CardHeader><CardTitle className="text-base">面试设置</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-3 gap-3">
@@ -168,8 +302,9 @@ export function MockSetup({ onStart }: Props) {
         </CardContent>
       </Card>
 
-      <Button className="w-full h-12 text-base" onClick={handleStart} disabled={loading}>
-        {loading ? '创建中...' : '开始AI模拟面试'}<ArrowRight className="w-4 h-4 ml-2" />
+      <Button className="w-full h-12 text-base" onClick={handleStart} disabled={loading || !canStart}>
+        {loading ? 'AI 解析中...' : '开始AI模拟面试'}
+        <ArrowRight className="w-4 h-4 ml-2" />
       </Button>
     </div>
   );

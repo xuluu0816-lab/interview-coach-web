@@ -1,0 +1,33 @@
+# Render 部署配置 — interview-coach 后端
+# 文档: https://render.com/docs/yaml-spec
+
+services:
+  - type: web
+    name: interview-coach-api
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3001"
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_BASE_URL
+        value: https://api.deepseek.com/v1
+      - key: DEEPSEEK_MODEL
+        value: deepseek-chat
+      - key: ZHIPU_API_KEY
+        sync: false
+      - key: ZHIPU_MODEL
+        value: glm-4-flash
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: https://xuluu0816-lab.github.io
+      - key: MAX_FILE_SIZE
+        value: "52428800"

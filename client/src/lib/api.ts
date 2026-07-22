@@ -48,7 +48,49 @@ export async function getProgress(): Promise<ProgressReport> { return request('/
 
 // ========== 文件 ==========
 export async function uploadFile(file: File): Promise<UploadedFile> { const token = localStorage.getItem('token'); const fd = new FormData(); fd.append('file', file); const res = await fetch(`${BASE_URL}/files/upload`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd }); if (!res.ok) throw new Error((await res.json().catch(() => ({ message: 'Upload failed' }))).message); return res.json(); }
-export async function parseResumeFile(file: File): Promise<{ text: string; filename: string }> { const token = localStorage.getItem('token'); const fd = new FormData(); fd.append('file', file); const res = await fetch(`${BASE_URL}/files/parse-resume`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd }); if (!res.ok) throw new Error((await res.json().catch(() => ({ message: 'Parse failed' }))).message); return res.json(); }
+// ── 面试准备模块：两步式上传 → 缓存 → 确认 → AI 解析 ──
+
+/** 上传简历文件 → 后端本地解析 + 缓存（不返回文本） */
+export async function prepResumeFile(file: File): Promise<{ id: string; filename: string; file_type: string }> {
+  const token = localStorage.getItem('token');
+  const fd = new FormData(); fd.append('file', file);
+  const res = await fetch(`${BASE_URL}/files/prep-resume`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({ message: '上传失败' }))).message);
+  return res.json();
+}
+
+/** 上传 JD 文件 → 后端本地解析 + 缓存（不返回文本） */
+export async function prepJDFile(file: File): Promise<{ id: string; filename: string; file_type: string }> {
+  const token = localStorage.getItem('token');
+  const fd = new FormData(); fd.append('file', file);
+  const res = await fetch(`${BASE_URL}/files/prep-jd`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({ message: '上传失败' }))).message);
+  return res.json();
+}
+
+/** 缓存纯文本（JD/简历手动粘贴场景） */
+export async function cacheText(text: string, type: 'jd' | 'resume'): Promise<{ id: string }> {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${BASE_URL}/files/cache-text`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ text, type }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({ message: '缓存失败' }))).message);
+  return res.json();
+}
+
+/** 确认后调用智谱 AI 解析缓存的文本 */
+export async function confirmPrep(id: string, type: 'resume' | 'jd'): Promise<{ text: string }> {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${BASE_URL}/files/${id}/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ type }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({ message: 'AI 解析失败' }))).message);
+  return res.json();
+}
 export async function getFiles(): Promise<UploadedFile[]> { return request('/files'); }
 export async function getFileDetail(id: string): Promise<UploadedFile> { return request(`/files/${id}`); }
 export async function analyzeFile(id: string, analysisType: 'resume' | 'jd'): Promise<{ type: string; result: ResumeAnalysis | JdAnalysis }> { return request(`/files/${id}/analyze`, { method: 'POST', body: JSON.stringify({ analysis_type: analysisType }) }); }
@@ -77,7 +119,7 @@ export async function uploadAndAnalyzeJD(fileOrText: { file?: File; text?: strin
   if (!parsedText.trim()) throw new Error('未能提取JD文本内容');
   // 使用已有的 analyze 接口，传分析类型为 jd
   const token = localStorage.getItem('token');
-  const res = await fetch(`${BASE_URL}/files/analyze-direct`, {
+  const res = await fetch(`${BASE_URL}/analyze/text`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ text: parsedText, analysis_type: 'jd_prep' }),

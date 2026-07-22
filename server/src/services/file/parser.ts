@@ -1,34 +1,49 @@
 /**
  * 文件解析服务 — 根据文件类型路由到对应的解析器
+ * 所有解析（包括图片 OCR）均在后端本地完成，不依赖外部 API
  */
 import fs from 'fs';
 import path from 'path';
 import { FileType } from '../../types';
 
+// ── tesseract.js 单例 worker（避免重复加载语言包）──
+let _worker: any = null;
+let _workerLoading: Promise<any> | null = null;
+
+async function getOcrWorker(): Promise<any> {
+  if (_worker) return _worker;
+  if (_workerLoading) return _workerLoading;
+
+  _workerLoading = (async () => {
+    const { createWorker } = require('tesseract.js');
+    _worker = await createWorker('chi_sim+eng', 1, {
+      logger: (m: any) => {
+        if (m.status === 'error') console.error('Tesseract OCR error:', m);
+      },
+    });
+    return _worker;
+  })();
+
+  return _workerLoading;
+}
+
 /**
- * 调用 OCR.space 免费 API 识别图片文字
- * 免费版：500次/天，无需 API Key
+ * 使用 tesseract.js 本地 OCR 识别图片文字
+ * 支持中文 + 英文混合识别
  */
 async function ocrImage(filePath: string): Promise<string> {
-  const FormData = require('form-data');
-  const fileBuffer = fs.readFileSync(filePath);
-  const form = new FormData();
-  form.append('file', fileBuffer, { filename: path.basename(filePath), contentType: 'image/png' });
-  form.append('language', 'chs'); // 简体中文
-  form.append('isOverlayRequired', 'false');
-  form.append('OCREngine', '2'); // 更准确的引擎
-
-  const res = await fetch('https://api.ocr.space/parse/image', {
-    method: 'POST',
-    headers: { 'apikey': 'helloworld', ...form.getHeaders() },
-    body: form.getBuffer(),
-  });
-
-  if (!res.ok) throw new Error(`OCR API error: ${res.status}`);
-  const data = await res.json() as any;
-  const text = data?.ParsedResults?.[0]?.ParsedText || '';
-  if (!text.trim()) throw new Error('OCR 未能识别到文字，请确认图片清晰度');
-  return text.trim();
+  try {
+    const worker = await getOcrWorker();
+    const { data: { text } } = await worker.recognize(filePath);
+    const trimmed = text?.trim() || '';
+    if (!trimmed) throw new Error('OCR 未能识别到文字，请确认图片清晰度');
+    return trimmed;
+  } catch (err: any) {
+    if (err.message?.includes('Cannot find module')) {
+      throw new Error('tesseract.js 未安装，请运行: npm install tesseract.js');
+    }
+    throw new Error(`图片 OCR 识别失败: ${err.message}`);
+  }
 }
 
 /**

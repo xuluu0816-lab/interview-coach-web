@@ -1,151 +1,103 @@
 /**
- * 智谱 AI (GLM) 客户端 — 多模态 + 文本简历解析
+ * 智谱 AI (GLM-4-Flash) 客户端 — 纯文本简历/JD 解析
  *
- * GLM-4V-Flash：免费多模态模型，支持图片直传解析
- * GLM-4-Flash：免费文本模型，用于 PDF/Word 提取后的结构化整理
+ * 流程：后端本地提取纯文本后，调用智谱文本模型进行结构化整理。
+ * 不使用多模态 image_url 方案 —— 图片一律先经本地 tesseract.js OCR 提取文字。
  *
  * 获取 API Key: https://open.bigmodel.cn/usercenter/apikeys
  */
-import fs from 'fs';
-import path from 'path';
 import { config } from '../../config';
 
 const ZHIPU_API = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
 
-interface VisionMessage {
-  role: 'user';
-  content: (TextBlock | ImageBlock)[];
-}
-
-interface TextBlock {
-  type: 'text';
-  text: string;
-}
-
-interface ImageBlock {
-  type: 'image_url';
-  image_url: { url: string };
+interface ChatMessage {
+  role: 'system' | 'user';
+  content: string;
 }
 
 /**
- * 用智谱 GLM-4V 多模态直接解析图片简历
- * PDF/Word 先用 pdf-parse/mammoth 提取文本，再交 GLM-4 整理
+ * 调用智谱 GLM-4-Flash 文本模型
  */
-export async function parseResumeWithZhipu(
-  filePath: string,
-  filename: string,
-  mimeType: string,
-): Promise<string> {
+async function callZhipu(messages: ChatMessage[], maxTokens = 4096): Promise<string> {
   const apiKey = config.zhipu.apiKey;
   if (!apiKey) {
-    throw new Error('ZHIPU_API_KEY 未配置，请在 Render 环境变量中添加（免费获取: https://open.bigmodel.cn/usercenter/apikeys）');
+    throw new Error(
+      'ZHIPU_API_KEY 未配置，请在 Render 环境变量中添加（免费获取: https://open.bigmodel.cn/usercenter/apikeys）',
+    );
   }
 
-  const ext = path.extname(filename).toLowerCase();
-  let messages: { role: string; content: any }[];
-  let model: string;
-
-  // ── 图片：直传 GLM-4V ──
-  if (['.png', '.jpg', '.jpeg'].includes(ext)) {
-    const base64 = fs.readFileSync(filePath).toString('base64');
-    model = config.zhipu.visionModel;
-    messages = [{
-      role: 'user',
-      content: [
-        {
-          type: 'image_url',
-          image_url: { url: `data:${mimeType};base64,${base64}` },
-        },
-        {
-          type: 'text',
-          text: `请仔细识别并提取这份简历图片中的所有文字内容。
-要求：
-1. 保留原文结构和层级（教育经历、工作经历、项目经验、技能等）
-2. 保留所有关键信息：姓名、联系方式、学校、公司、职位、时间、数字
-3. 忠实提取，不要总结或评价
-4. 直接输出纯文本简历内容`,
-        },
-      ],
-    }];
-  }
-  // ── PDF：pdf-parse 提取文本 → GLM-4 整理 ──
-  else if (ext === '.pdf') {
-    const rawText = await extractPdfText(filePath);
-    model = config.zhipu.textModel;
-    messages = [{
-      role: 'user',
-      content: `以下是从 PDF 简历中提取的原始文本，请整理为结构清晰的简历内容（保留所有关键信息，去除页码、页眉页脚等噪声）：
-
-${rawText}`,
-    }];
-  }
-  // ── Word：mammoth 提取文本 → GLM-4 整理 ──
-  else if (['.docx', '.doc'].includes(ext)) {
-    const rawText = await extractDocxText(filePath);
-    model = config.zhipu.textModel;
-    messages = [{
-      role: 'user',
-      content: `以下是从 Word 简历中提取的原始文本，请整理为结构清晰的简历内容（保留所有关键信息）：
-
-${rawText}`,
-    }];
-  } else {
-    throw new Error(`不支持的文件格式: ${ext}`);
-  }
-
-  // 调用智谱 API
   const response = await fetch(ZHIPU_API, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model,
+      model: config.zhipu.model,
       messages,
       temperature: 0.1,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
     }),
   });
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({})) as any;
+    const err = (await response.json().catch(() => ({}))) as any;
     const msg = err?.error?.message || err?.message || `HTTP ${response.status}`;
-    throw new Error(`智谱 API 解析失败: ${msg}`);
+    throw new Error(`智谱 API 调用失败: ${msg}`);
   }
 
-  const data = await response.json() as any;
+  const data = (await response.json()) as any;
   const text = data?.choices?.[0]?.message?.content || '';
   if (!text.trim()) throw new Error('智谱未返回有效文本');
 
   return text.trim();
 }
 
-// ── PDF 文本提取 ──
-async function extractPdfText(filePath: string): Promise<string> {
-  try {
-    const pdfParse = require('pdf-parse');
-    const buffer = fs.readFileSync(filePath);
-    const data = await pdfParse(buffer);
-    return data.text || '(PDF 无文本内容)';
-  } catch (err: any) {
-    if (err.message?.includes('Cannot find module')) {
-      throw new Error('pdf-parse 未安装');
-    }
-    throw new Error(`PDF 解析失败: ${err.message}`);
-  }
+// ────────────────────────────────────────────────────────────────
+// 简历：将本地提取的原始文本整理为结构化简历
+// ────────────────────────────────────────────────────────────────
+
+const RESUME_PARSE_SYSTEM = `你是一位专业的简历解析助手。你的任务是将从简历文件中提取的原始文本整理为结构清晰的简历内容。
+
+要求：
+1. 保留所有关键信息：姓名、联系方式、教育经历、工作经历、项目经验、技能、证书等
+2. 忠实于原文内容，不要编造或推测任何信息
+3. 如果原文某部分缺失（如无联系方式），直接跳过，不要填充占位符
+4. 输出结构清晰的纯文本简历，每个部分用小标题标注
+5. 去除页码、页眉页脚、乱码等提取噪声`;
+
+export async function parseResumeWithAI(rawText: string): Promise<string> {
+  const messages: ChatMessage[] = [
+    { role: 'system', content: RESUME_PARSE_SYSTEM },
+    {
+      role: 'user',
+      content: `请将以下从简历文件中提取的原始文本整理为结构化简历：\n\n${rawText}`,
+    },
+  ];
+  return callZhipu(messages, 4096);
 }
 
-// ── Word 文本提取 ──
-async function extractDocxText(filePath: string): Promise<string> {
-  try {
-    const mammoth = require('mammoth');
-    const result = await mammoth.extractRawText({ path: filePath });
-    return result.value || '(Word 文档无文本内容)';
-  } catch (err: any) {
-    if (err.message?.includes('Cannot find module')) {
-      throw new Error('mammoth 未安装');
-    }
-    throw new Error(`Word 解析失败: ${err.message}`);
-  }
+// ────────────────────────────────────────────────────────────────
+// JD：将本地提取的原始文本整理为结构化岗位描述
+// ────────────────────────────────────────────────────────────────
+
+const JD_PARSE_SYSTEM = `你是一位专业的JD（岗位描述）解析助手。你的任务是将岗位描述文本整理为结构清晰的内容。
+
+要求：
+1. 提取关键信息：职位名称、公司、工作地点、薪资范围（如有）
+2. 整理岗位职责（职责列表）
+3. 整理任职要求（要求列表）
+4. 保留技术栈、工具、证书等关键词
+5. 忠实于原文，不要编造信息
+6. 输出结构清晰的纯文本`;
+
+export async function parseJDWithAI(rawText: string): Promise<string> {
+  const messages: ChatMessage[] = [
+    { role: 'system', content: JD_PARSE_SYSTEM },
+    {
+      role: 'user',
+      content: `请将以下岗位描述整理为结构化内容：\n\n${rawText}`,
+    },
+  ];
+  return callZhipu(messages, 4096);
 }

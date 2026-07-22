@@ -28,12 +28,11 @@ export const config = {
     temperature: parseFloat(process.env.DEEPSEEK_TEMPERATURE || '0.7'),
   },
 
-  // 智谱 AI (GLM) — 多模态+文本简历解析
+  // 智谱 AI (GLM-4-Flash) — 文本简历/JD 结构化解析
   // 免费获取 API Key: https://open.bigmodel.cn/usercenter/apikeys
   zhipu: {
     apiKey: process.env.ZHIPU_API_KEY || '',
-    visionModel: process.env.ZHIPU_VISION_MODEL || 'glm-4v-flash',
-    textModel: process.env.ZHIPU_TEXT_MODEL || 'glm-4-flash',
+    model: process.env.ZHIPU_MODEL || 'glm-4-flash',
   },
 
   // 文件上传
