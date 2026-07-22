@@ -5,6 +5,17 @@ import type { Session, InterviewQuestion, QuestionBankItem, UploadedFile, Review
 
 export const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
+/** 文件上传专用（超时 120s，应对 Render 休眠唤醒 + OCR 初始化） */
+async function uploadFetch(url: string, options: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120_000);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem('token');
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options?.headers as Record<string, string> || {}) };
@@ -50,20 +61,20 @@ export async function getProgress(): Promise<ProgressReport> { return request('/
 export async function uploadFile(file: File): Promise<UploadedFile> { const token = localStorage.getItem('token'); const fd = new FormData(); fd.append('file', file); const res = await fetch(`${BASE_URL}/files/upload`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd }); if (!res.ok) throw new Error((await res.json().catch(() => ({ message: 'Upload failed' }))).message); return res.json(); }
 // ── 面试准备模块：两步式上传 → 缓存 → 确认 → AI 解析 ──
 
-/** 上传简历文件 → 后端本地解析 + 缓存（不返回文本） */
+/** 上传简历文件 → 后端本地解析 + 缓存（不返回文本，超时 120s 适应 Render 休眠） */
 export async function prepResumeFile(file: File): Promise<{ id: string; filename: string; file_type: string }> {
   const token = localStorage.getItem('token');
   const fd = new FormData(); fd.append('file', file);
-  const res = await fetch(`${BASE_URL}/files/prep-resume`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
+  const res = await uploadFetch(`${BASE_URL}/files/prep-resume`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
   if (!res.ok) throw new Error((await res.json().catch(() => ({ message: '上传失败' }))).message);
   return res.json();
 }
 
-/** 上传 JD 文件 → 后端本地解析 + 缓存（不返回文本） */
+/** 上传 JD 文件 → 后端本地解析 + 缓存（不返回文本，超时 120s 适应 Render 休眠） */
 export async function prepJDFile(file: File): Promise<{ id: string; filename: string; file_type: string }> {
   const token = localStorage.getItem('token');
   const fd = new FormData(); fd.append('file', file);
-  const res = await fetch(`${BASE_URL}/files/prep-jd`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
+  const res = await uploadFetch(`${BASE_URL}/files/prep-jd`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
   if (!res.ok) throw new Error((await res.json().catch(() => ({ message: '上传失败' }))).message);
   return res.json();
 }

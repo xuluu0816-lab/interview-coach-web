@@ -19,12 +19,25 @@ async function getOcrWorker(): Promise<any> {
     _worker = await createWorker('chi_sim+eng', 1, {
       logger: (m: any) => {
         if (m.status === 'error') console.error('Tesseract OCR error:', m);
+        else if (m.status === 'loading language traineddata') console.log(`Tesseract: ${m.status} (${Math.round(m.progress * 100)}%)`);
+        else console.log(`Tesseract: ${m.status}`);
       },
     });
     return _worker;
   })();
 
   return _workerLoading;
+}
+
+/** 服务启动时预热 OCR 引擎（下载语言包，避免首次请求超时） */
+export async function warmUpOcr(): Promise<void> {
+  console.log('Warming up tesseract.js OCR engine...');
+  try {
+    await getOcrWorker();
+    console.log('Tesseract.js OCR engine ready.');
+  } catch (err: any) {
+    console.warn('OCR warm-up failed (non-fatal, will retry on first image upload):', err.message);
+  }
 }
 
 /**

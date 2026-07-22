@@ -1,6 +1,7 @@
 import app from './app';
 import { config } from './config';
 import { initDb, db, saveDb, questionBank } from './db';
+import { warmUpOcr } from './services/file/parser';
 
 /** 自动填充题库种子数据 */
 function autoSeed() {
@@ -102,6 +103,9 @@ async function start() {
 
   // 自动填充题库
   autoSeed();
+
+  // 预热 OCR 引擎（后台下载 tesseract.js 语言包，避免首次图片上传超时）
+  warmUpOcr();
 
   app.listen(config.port, () => {
     console.log(`Server running on port ${config.port}`);
