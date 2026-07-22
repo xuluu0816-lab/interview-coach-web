@@ -48,6 +48,7 @@ export async function getProgress(): Promise<ProgressReport> { return request('/
 
 // ========== 文件 ==========
 export async function uploadFile(file: File): Promise<UploadedFile> { const token = localStorage.getItem('token'); const fd = new FormData(); fd.append('file', file); const res = await fetch(`${BASE_URL}/files/upload`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd }); if (!res.ok) throw new Error((await res.json().catch(() => ({ message: 'Upload failed' }))).message); return res.json(); }
+export async function parseResumeFile(file: File): Promise<{ text: string; filename: string }> { const token = localStorage.getItem('token'); const fd = new FormData(); fd.append('file', file); const res = await fetch(`${BASE_URL}/files/parse-resume`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd }); if (!res.ok) throw new Error((await res.json().catch(() => ({ message: 'Parse failed' }))).message); return res.json(); }
 export async function getFiles(): Promise<UploadedFile[]> { return request('/files'); }
 export async function getFileDetail(id: string): Promise<UploadedFile> { return request(`/files/${id}`); }
 export async function analyzeFile(id: string, analysisType: 'resume' | 'jd'): Promise<{ type: string; result: ResumeAnalysis | JdAnalysis }> { return request(`/files/${id}/analyze`, { method: 'POST', body: JSON.stringify({ analysis_type: analysisType }) }); }

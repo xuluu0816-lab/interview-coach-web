@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
-import { createSession } from '@/lib/api';
+import { createSession, parseResumeFile } from '@/lib/api';
 import type { Session, MockInterviewConfig } from '@/types';
-import { Upload, ArrowRight, FileText, User } from 'lucide-react';
+import { Upload, ArrowRight, FileText, User, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+
+const RESUME_ACCEPT = '.png,.jpg,.jpeg,.pdf,.docx,.doc';
 
 interface Props { onStart: (session: Session, config: MockInterviewConfig) => void; }
 
@@ -18,6 +20,42 @@ export function MockSetup({ onStart }: Props) {
   const [questionCount, setQuestionCount] = useState(5);
   const [language, setLanguage] = useState<'zh' | 'en'>('zh');
   const [loading, setLoading] = useState(false);
+
+  // 简历文件上传状态
+  const [uploading, setUploading] = useState(false);
+  const [uploadName, setUploadName] = useState('');
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'parsing' | 'done' | 'error'>('idle');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (!['png', 'jpg', 'jpeg', 'pdf', 'docx', 'doc'].includes(ext || '')) {
+      alert('请上传 PNG / JPG / PDF / Word 格式的简历文件');
+      return;
+    }
+
+    setUploadName(file.name);
+    setUploading(true);
+    setUploadStatus('parsing');
+
+    try {
+      const result = await parseResumeFile(file);
+      setResumeText(result.text);
+      setUploadStatus('done');
+    } catch (err: any) {
+      setUploadStatus('error');
+      alert('简历解析失败: ' + (err.message === 'Failed to fetch'
+        ? '无法连接后端服务器（免费服务器可能正在休眠，请稍后重试）'
+        : err.message));
+    } finally {
+      setUploading(false);
+      // 重置 input 以便重新选择同一文件
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
 
   const handleStart = async () => {
     setLoading(true);
@@ -38,8 +76,69 @@ export function MockSetup({ onStart }: Props) {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><User className="w-4 h-4" />个人简历</CardTitle></CardHeader>
-        <CardContent><Textarea className="min-h-[200px]" placeholder="粘贴简历内容...（AI将针对每段经历提问）" value={resumeText} onChange={e => setResumeText(e.target.value)} /></CardContent>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><User className="w-4 h-4" />个人简历</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* 文件上传按钮 */}
+          <div className="flex items-center gap-3">
+            <label className="cursor-pointer">
+              <input
+                ref={fileRef}
+                type="file"
+                className="hidden"
+                accept={RESUME_ACCEPT}
+                onChange={handleResumeUpload}
+                disabled={uploading}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={uploading}
+                onClick={(e) => { e.preventDefault(); fileRef.current?.click(); }}
+              >
+                {uploading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5" />
+                )}
+                上传简历文件
+              </Button>
+            </label>
+
+            <span className="text-xs text-gray-400">
+              支持 PNG / JPG / PDF / Word · AI 直接解析
+            </span>
+
+            {uploadStatus === 'parsing' && (
+              <span className="text-xs text-blue-500 flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {uploadName}
+              </span>
+            )}
+            {uploadStatus === 'done' && (
+              <span className="text-xs text-green-600 flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" />
+                {uploadName} 解析完成
+              </span>
+            )}
+            {uploadStatus === 'error' && (
+              <span className="text-xs text-red-500 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                解析失败
+              </span>
+            )}
+          </div>
+
+          {/* 简历文本编辑 */}
+          <Textarea
+            className="min-h-[200px]"
+            placeholder="粘贴简历内容，或点击上方按钮上传简历文件（AI直接解析PNG/JPG/PDF/Word）..."
+            value={resumeText}
+            onChange={e => setResumeText(e.target.value)}
+          />
+        </CardContent>
       </Card>
 
       <Card>

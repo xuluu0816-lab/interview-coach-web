@@ -92,4 +92,40 @@ router.delete('/:id', (req: Request, res: Response) => {
   return res.json({ success: true });
 });
 
+// ── Claude 多模态简历解析（PNG/JPG/PDF/Word 直传，无需 OCR）──
+router.post('/parse-resume', (req: Request, res: Response, next: Function) => {
+  upload.single('file')(req, res, (err: any) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: true, message: `文件过大，最大 ${config.upload.maxFileSize / 1048576}MB` });
+      return res.status(400).json({ error: true, message: err.message || '上传失败' });
+    }
+    next();
+  });
+}, async (req: Request, res: Response) => {
+  if (!req.file) return res.status(400).json({ error: true, message: '请选择要上传的文件' });
+
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  const mimeMap: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.pdf': 'application/pdf',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.doc': 'application/msword',
+  };
+  const mimeType = mimeMap[ext];
+  if (!mimeType) {
+    return res.status(400).json({ error: true, message: `不支持的文件格式: ${ext}，请上传 PNG/JPG/PDF/Word` });
+  }
+
+  try {
+    const { parseResumeWithClaude } = require('../services/ai/anthropic');
+    const parsedText = await parseResumeWithClaude(req.file.path, req.file.originalname, mimeType);
+    return res.json({ text: parsedText, filename: req.file.originalname });
+  } catch (err: any) {
+    console.error('Resume parse error:', err.message);
+    return res.status(500).json({ error: true, message: `简历解析失败: ${err.message}` });
+  }
+});
+
 export default router;

@@ -28,6 +28,13 @@ export const config = {
     temperature: parseFloat(process.env.DEEPSEEK_TEMPERATURE || '0.7'),
   },
 
+  // Anthropic Claude API — 多模态文件解析（PNG/JPG/PDF 直传）
+  anthropic: {
+    apiKey: process.env.ANTHROPIC_API_KEY || '',
+    model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
+    maxTokens: parseInt(process.env.ANTHROPIC_MAX_TOKENS || '4096', 10),
+  },
+
   // 文件上传
   upload: {
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '52428800', 10), // 50MB
