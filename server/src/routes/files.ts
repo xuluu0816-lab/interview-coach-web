@@ -33,7 +33,7 @@ const upload = multer({
 });
 
 // 允许上传的简历/JD 文件格式
-const RESUME_JD_ALLOWED = /\.(pdf|docx|doc|png|jpg|jpeg)$/i;
+const RESUME_JD_ALLOWED = /\.(pdf|docx|doc|png|jpg|jpeg|txt)$/i;
 
 // ── 通用文件上传（返回解析文本预览，用于复盘等场景）──
 router.post('/upload', (req: Request, res: Response, next: Function) => {

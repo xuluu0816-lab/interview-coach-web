@@ -12,10 +12,7 @@ import { Loader2, Copy, Download, RefreshCw, Upload, FileText, Building2, Target
 const JD_ACCEPT = '.pdf,.docx,.doc,.png,.jpg,.jpeg,.txt';
 
 export function JdAnalyzer() {
-  // ── JD 文本（手动粘贴）──
-  const [jdText, setJdText] = useState('');
-
-  // ── JD 文件上传（后端静默解析）──
+  // ── JD 文件上传（后端静默解析，前端只显示文件名）──
   const [jdFileId, setJdFileId] = useState<string | null>(null);
   const [jdFileName, setJdFileName] = useState('');
   const [jdUploading, setJdUploading] = useState(false);
@@ -44,7 +41,6 @@ export function JdAnalyzer() {
     try {
       const result = await prepJDFile(file);
       setJdFileId(result.id);
-      setJdText(''); // 上传文件后清除手动粘贴
       setJdFileStatus('done');
     } catch (err: any) {
       setJdFileStatus('error');
@@ -65,16 +61,11 @@ export function JdAnalyzer() {
 
   // ── AI 生成分析 ──
   const handleAnalyze = async () => {
-    if (!jdText.trim() && !jdFileId) return;
-
+    if (!jdFileId) return;
     setLoading(true);
     setStep('analyzing');
     try {
-      const data = await analyzeJDPrep(
-        jdFileId ? undefined : jdText,
-        jdFileId || undefined,
-        userPrompt || undefined,
-      );
+      const data = await analyzeJDPrep(jdFileId, userPrompt || undefined);
       setResult(data);
       setStep('result');
     } catch (err: any) {
@@ -88,12 +79,10 @@ export function JdAnalyzer() {
   const handleCopy = () => { if (result) navigator.clipboard.writeText(JSON.stringify(result, null, 2)); };
   const handleDownload = () => {
     if (!result) return;
-    let t = '=== 面试预习报告 ===\n\n【公司概况】\n' + result.companyFramework.overview + '\n\n【业务线】\n' + result.companyFramework.businessLines.join('\n') + '\n\n【竞品】\n' + result.companyFramework.competitors.join('\n') + '\n\n【面试题】\n';
+    let t = '=== 面试预习报告 ===\n\n【公司概况】\n' + result.companyFramework.overview + '\n\n【业务线】\n' + result.companyFramework.businessLines.join('\n') + '\n\n【竞品】\n' + result.companyFramework.competitors.join('\n') + '\n\n【近期动态】\n' + result.companyFramework.recentNews.join('\n') + '\n\n【面试题】\n';
     result.businessQuestions.forEach((q, i) => { t += `\n${i + 1}. [${q.category}] ${q.question}\n场景：${q.scenario}\n参考：${q.referenceAnswer}\n`; });
     const blob = new Blob([t], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `面试预习_${Date.now()}.txt`; a.click();
   };
-
-  const canAnalyze = (jdText.trim() || jdFileId) && !loading;
 
   return (
     <div className="space-y-4">
@@ -102,67 +91,13 @@ export function JdAnalyzer() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" />JD 预习分析</CardTitle>
-            <CardDescription>粘贴 JD 内容或上传 JD 文件，可选填写分析要求，AI 生成面试预习报告</CardDescription>
+            <CardDescription>上传 JD 文件，可选填写分析要求，AI 生成面试预习报告（解析过程在后端完成，不展示原始内容）</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* JD 文件上传 */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <label className="cursor-pointer">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  className="hidden"
-                  accept={JD_ACCEPT}
-                  onChange={handleFileUpload}
-                  disabled={jdUploading}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={jdUploading}
-                  onClick={(e) => { e.preventDefault(); fileRef.current?.click(); }}
-                >
-                  {jdUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                  上传 JD 文件
-                </Button>
-              </label>
-              <span className="text-xs text-gray-400">PDF / Word / 图片 / TXT · 后端静默解析</span>
-
-              {jdFileStatus === 'parsing' && (
-                <span className="text-xs text-blue-500 flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin" />{jdFileName}
-                </span>
-              )}
-              {jdFileStatus === 'done' && jdFileName && (
-                <Badge variant="secondary" className="gap-1 text-xs">
-                  <CheckCircle className="w-3 h-3 text-green-600" />
-                  {jdFileName}
-                  <X className="w-3 h-3 cursor-pointer ml-0.5 hover:text-red-500" onClick={clearFile} />
-                </Badge>
-              )}
-              {jdFileStatus === 'error' && (
-                <span className="text-xs text-red-500 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />解析失败
-                  <X className="w-3 h-3 cursor-pointer hover:text-red-700" onClick={clearFile} />
-                </span>
-              )}
-            </div>
-
-            {/* 手动粘贴 JD（仅无文件上传时显示）*/}
-            {!jdFileId && (
-              <Textarea
-                className="min-h-[200px]"
-                placeholder="粘贴岗位 JD 的纯文本内容..."
-                value={jdText}
-                onChange={e => setJdText(e.target.value)}
-              />
-            )}
-
-            {/* 用户自定义分析要求 */}
+            {/* ① 用户自定义分析要求（放在上方） */}
             <div>
-              <label className="text-xs text-gray-500 mb-1.5 block">
-                补充分析要求 <span className="text-gray-400">（可选）</span>
+              <label className="text-xs font-medium text-gray-600 mb-1.5 block">
+                补充分析要求 <span className="text-gray-400 font-normal">（可选）</span>
               </label>
               <Textarea
                 className="min-h-[80px]"
@@ -172,8 +107,57 @@ export function JdAnalyzer() {
               />
             </div>
 
-            {/* 分析按钮 */}
-            <Button onClick={handleAnalyze} disabled={!canAnalyze} className="w-full">
+            {/* ② JD 文件上传 */}
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1.5 block">
+                上传 JD 文件 <span className="text-red-400">*</span>
+              </label>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="cursor-pointer">
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    className="hidden"
+                    accept={JD_ACCEPT}
+                    onChange={handleFileUpload}
+                    disabled={jdUploading}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={jdUploading}
+                    onClick={(e) => { e.preventDefault(); fileRef.current?.click(); }}
+                  >
+                    {jdUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                    选择文件
+                  </Button>
+                </label>
+                <span className="text-xs text-gray-400">PDF / Word / 图片 / TXT · 后端静默解析</span>
+
+                {jdFileStatus === 'parsing' && (
+                  <span className="text-xs text-blue-500 flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />{jdFileName}
+                  </span>
+                )}
+                {jdFileStatus === 'done' && jdFileName && (
+                  <Badge variant="secondary" className="gap-1 text-xs">
+                    <CheckCircle className="w-3 h-3 text-green-600" />
+                    {jdFileName}
+                    <X className="w-3 h-3 cursor-pointer ml-0.5 hover:text-red-500" onClick={clearFile} />
+                  </Badge>
+                )}
+                {jdFileStatus === 'error' && (
+                  <span className="text-xs text-red-500 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />解析失败
+                    <X className="w-3 h-3 cursor-pointer hover:text-red-700" onClick={clearFile} />
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* ③ 分析按钮 */}
+            <Button onClick={handleAnalyze} disabled={!jdFileId || loading} className="w-full">
               {loading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
               AI 生成分析
             </Button>
@@ -197,7 +181,7 @@ export function JdAnalyzer() {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setStep('input')}><RefreshCw className="w-4 h-4 mr-1" />重新分析</Button>
-            <Button variant="outline" size="sm" onClick={handleCopy}><Copy className="w-4 h-4 mr-1" />复制全部</Button>
+            <Button variant="outline" size="sm" onClick={handleCopy}><Copy className="w-4 h-4 mr-1" />复制JSON</Button>
             <Button variant="outline" size="sm" onClick={handleDownload}><Download className="w-4 h-4 mr-1" />下载TXT</Button>
           </div>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
