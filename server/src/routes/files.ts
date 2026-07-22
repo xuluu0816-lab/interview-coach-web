@@ -92,7 +92,7 @@ router.delete('/:id', (req: Request, res: Response) => {
   return res.json({ success: true });
 });
 
-// ── Claude 多模态简历解析（PNG/JPG/PDF/Word 直传，无需 OCR）──
+// ── Gemini 多模态简历解析（PNG/JPG/PDF/Word 直传，无需 OCR，免费）──
 router.post('/parse-resume', (req: Request, res: Response, next: Function) => {
   upload.single('file')(req, res, (err: any) => {
     if (err) {
@@ -119,8 +119,8 @@ router.post('/parse-resume', (req: Request, res: Response, next: Function) => {
   }
 
   try {
-    const { parseResumeWithClaude } = require('../services/ai/anthropic');
-    const parsedText = await parseResumeWithClaude(req.file.path, req.file.originalname, mimeType);
+    const { parseResumeWithGemini } = require('../services/ai/gemini');
+    const parsedText = await parseResumeWithGemini(req.file.path, req.file.originalname, mimeType);
     return res.json({ text: parsedText, filename: req.file.originalname });
   } catch (err: any) {
     console.error('Resume parse error:', err.message);
