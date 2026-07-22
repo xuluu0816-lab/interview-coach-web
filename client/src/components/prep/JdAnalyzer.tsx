@@ -1,82 +1,88 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { uploadFile, getFileDetail, BASE_URL } from '@/lib/api';
+import { prepJDFile, analyzeJDPrep } from '@/lib/api';
 import type { JdPrepResult, CompanyFramework, BusinessQuestion } from '@/types';
-import { Loader2, Copy, Download, RefreshCw, Upload, FileText, Building2, Target } from 'lucide-react';
-import { createWorker } from 'tesseract.js';
+import { Loader2, Copy, Download, RefreshCw, Upload, FileText, Building2, Target, CheckCircle, AlertCircle, X } from 'lucide-react';
+
+const JD_ACCEPT = '.pdf,.docx,.doc,.png,.jpg,.jpeg,.txt';
 
 export function JdAnalyzer() {
+  // ── JD 文本（手动粘贴）──
   const [jdText, setJdText] = useState('');
+
+  // ── JD 文件上传（后端静默解析）──
+  const [jdFileId, setJdFileId] = useState<string | null>(null);
+  const [jdFileName, setJdFileName] = useState('');
+  const [jdUploading, setJdUploading] = useState(false);
+  const [jdFileStatus, setJdFileStatus] = useState<'idle' | 'parsing' | 'done' | 'error'>('idle');
+
+  // ── 用户自定义分析要求 ──
+  const [userPrompt, setUserPrompt] = useState('');
+
+  // ── 分析状态 ──
   const [loading, setLoading] = useState(false);
-  const [ocrProgress, setOcrProgress] = useState(0);
-  const [ocrStatus, setOcrStatus] = useState('');
   const [result, setResult] = useState<JdPrepResult | null>(null);
   const [step, setStep] = useState<'input' | 'analyzing' | 'result'>('input');
   const [activeTab, setActiveTab] = useState('framework');
 
-  /** 图片OCR：浏览器本地 tesseract.js 识别 */
-  const handleImageOCR = async (file: File) => {
-    setOcrProgress(0); setOcrStatus('正在加载OCR引擎...');
-    const worker = await createWorker('chi_sim+eng', 1, {
-      logger: (m) => {
-        if (m.status === 'loading tesseract core') setOcrStatus('加载OCR核心...');
-        else if (m.status === 'initializing tesseract') setOcrStatus('初始化引擎...');
-        else if (m.status === 'loading language traineddata') setOcrStatus('加载中文语言包...');
-        else if (m.status === 'recognizing text') { setOcrStatus('识别文字中...'); setOcrProgress(Math.round(m.progress * 100)); }
-      },
-    });
-    const imageUrl = URL.createObjectURL(file);
-    const { data: { text } } = await worker.recognize(imageUrl);
-    await worker.terminate();
-    URL.revokeObjectURL(imageUrl);
-    return text.trim();
-  };
+  const fileRef = useRef<HTMLInputElement>(null);
 
+  // ── 文件上传 → 后端本地解析 + 缓存（前端不可见）──
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    setLoading(true); setOcrStatus(''); setOcrProgress(0);
-    try {
-      const isImage = /\.(png|jpg|jpeg)$/i.test(file.name) || file.type.startsWith('image/');
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-      if (isImage) {
-        // 图片文件 → 浏览器本地 OCR
-        const text = await handleImageOCR(file);
-        if (text) {
-          setJdText(text);
-        } else {
-          alert('OCR未能识别到文字。请确保图片清晰、含中文字符，或手动粘贴JD内容。');
-        }
-      } else {
-        // 文档文件 → 后端上传解析
-        const uploaded = await uploadFile(file);
-        const detail = await getFileDetail(uploaded.id);
-        if (detail.parsed_text) setJdText(detail.parsed_text);
-        else alert('未能解析文件内容，请确认文件格式。');
-      }
-    } catch (err: any) { alert('文件处理失败：' + err.message); }
-    finally { setLoading(false); setOcrStatus(''); }
+    setJdFileName(file.name);
+    setJdUploading(true);
+    setJdFileStatus('parsing');
+
+    try {
+      const result = await prepJDFile(file);
+      setJdFileId(result.id);
+      setJdText(''); // 上传文件后清除手动粘贴
+      setJdFileStatus('done');
+    } catch (err: any) {
+      setJdFileStatus('error');
+      alert('JD 文件解析失败: ' + (err.message === 'Failed to fetch'
+        ? '无法连接后端服务器（免费服务器可能正在休眠，请稍后重试）'
+        : err.message));
+    } finally {
+      setJdUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
   };
 
+  const clearFile = () => {
+    setJdFileId(null);
+    setJdFileName('');
+    setJdFileStatus('idle');
+  };
+
+  // ── AI 生成分析 ──
   const handleAnalyze = async () => {
-    if (!jdText.trim()) return;
-    setLoading(true); setStep('analyzing');
+    if (!jdText.trim() && !jdFileId) return;
+
+    setLoading(true);
+    setStep('analyzing');
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${BASE_URL}/analyze/text`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ text: jdText, analysis_type: 'jd_prep' }),
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({ message: '分析失败' }))).message);
-      const data = await res.json();
-      setResult(data); setStep('result');
-    } catch (err: any) { alert('分析失败：' + err.message); setStep('input'); }
-    finally { setLoading(false); }
+      const data = await analyzeJDPrep(
+        jdFileId ? undefined : jdText,
+        jdFileId || undefined,
+        userPrompt || undefined,
+      );
+      setResult(data);
+      setStep('result');
+    } catch (err: any) {
+      alert('分析失败：' + err.message);
+      setStep('input');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCopy = () => { if (result) navigator.clipboard.writeText(JSON.stringify(result, null, 2)); };
@@ -87,40 +93,118 @@ export function JdAnalyzer() {
     const blob = new Blob([t], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `面试预习_${Date.now()}.txt`; a.click();
   };
 
+  const canAnalyze = (jdText.trim() || jdFileId) && !loading;
+
   return (
     <div className="space-y-4">
+      {/* ── 输入面板 ── */}
       {step === 'input' && (
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" />JD文本输入</CardTitle><CardDescription>粘贴目标岗位JD，或上传JD文件（PDF/Word/TXT/PNG/JPG）</CardDescription></CardHeader>
-          <CardContent className="space-y-3">
-            <Textarea className="min-h-[200px]" placeholder="粘贴岗位JD的纯文本内容..." value={jdText} onChange={e => setJdText(e.target.value)} />
-            {ocrStatus && (
-              <div className="bg-blue-50 rounded-lg p-3 space-y-2">
-                <p className="text-sm text-blue-700 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />{ocrStatus}</p>
-                <Progress value={ocrProgress} className="h-2" />
-              </div>
-            )}
-            <div className="flex items-center gap-3">
-              <label className="cursor-pointer inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"><Upload className="w-4 h-4" />上传JD文件<input type="file" className="hidden" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg" onChange={handleFileUpload} /></label>
-              <Button onClick={handleAnalyze} disabled={!jdText.trim() || loading}>{loading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}AI生成分析</Button>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" />JD 预习分析</CardTitle>
+            <CardDescription>粘贴 JD 内容或上传 JD 文件，可选填写分析要求，AI 生成面试预习报告</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* JD 文件上传 */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="cursor-pointer">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  className="hidden"
+                  accept={JD_ACCEPT}
+                  onChange={handleFileUpload}
+                  disabled={jdUploading}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={jdUploading}
+                  onClick={(e) => { e.preventDefault(); fileRef.current?.click(); }}
+                >
+                  {jdUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  上传 JD 文件
+                </Button>
+              </label>
+              <span className="text-xs text-gray-400">PDF / Word / 图片 / TXT · 后端静默解析</span>
+
+              {jdFileStatus === 'parsing' && (
+                <span className="text-xs text-blue-500 flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />{jdFileName}
+                </span>
+              )}
+              {jdFileStatus === 'done' && jdFileName && (
+                <Badge variant="secondary" className="gap-1 text-xs">
+                  <CheckCircle className="w-3 h-3 text-green-600" />
+                  {jdFileName}
+                  <X className="w-3 h-3 cursor-pointer ml-0.5 hover:text-red-500" onClick={clearFile} />
+                </Badge>
+              )}
+              {jdFileStatus === 'error' && (
+                <span className="text-xs text-red-500 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />解析失败
+                  <X className="w-3 h-3 cursor-pointer hover:text-red-700" onClick={clearFile} />
+                </span>
+              )}
             </div>
+
+            {/* 手动粘贴 JD（仅无文件上传时显示）*/}
+            {!jdFileId && (
+              <Textarea
+                className="min-h-[200px]"
+                placeholder="粘贴岗位 JD 的纯文本内容..."
+                value={jdText}
+                onChange={e => setJdText(e.target.value)}
+              />
+            )}
+
+            {/* 用户自定义分析要求 */}
+            <div>
+              <label className="text-xs text-gray-500 mb-1.5 block">
+                补充分析要求 <span className="text-gray-400">（可选）</span>
+              </label>
+              <Textarea
+                className="min-h-[80px]"
+                placeholder="例如：请重点分析技术栈要求、帮我对比 P7 级别的差距、重点关注业务方向和文化匹配度……"
+                value={userPrompt}
+                onChange={e => setUserPrompt(e.target.value)}
+              />
+            </div>
+
+            {/* 分析按钮 */}
+            <Button onClick={handleAnalyze} disabled={!canAnalyze} className="w-full">
+              {loading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+              AI 生成分析
+            </Button>
           </CardContent>
         </Card>
       )}
 
+      {/* ── 分析中 ── */}
       {step === 'analyzing' && (
-        <Card><CardContent className="py-12 text-center space-y-4"><Loader2 className="w-10 h-10 animate-spin mx-auto text-primary" /><p className="text-lg font-medium">AI 正在分析JD...</p><Progress value={60} className="max-w-xs mx-auto" /></CardContent></Card>
+        <Card>
+          <CardContent className="py-12 text-center space-y-4">
+            <Loader2 className="w-10 h-10 animate-spin mx-auto text-primary" />
+            <p className="text-lg font-medium">AI 正在分析 JD{userPrompt ? '（含自定义要求）' : ''}...</p>
+            <Progress value={60} className="max-w-xs mx-auto" />
+          </CardContent>
+        </Card>
       )}
 
+      {/* ── 结果面板 ── */}
       {step === 'result' && result && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setStep('input')}><RefreshCw className="w-4 h-4 mr-1" />重新生成</Button>
+            <Button variant="outline" size="sm" onClick={() => setStep('input')}><RefreshCw className="w-4 h-4 mr-1" />重新分析</Button>
             <Button variant="outline" size="sm" onClick={handleCopy}><Copy className="w-4 h-4 mr-1" />复制全部</Button>
             <Button variant="outline" size="sm" onClick={handleDownload}><Download className="w-4 h-4 mr-1" />下载TXT</Button>
           </div>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList><TabsTrigger value="framework"><Building2 className="w-3 h-3 mr-1" />公司调研</TabsTrigger><TabsTrigger value="questions"><Target className="w-3 h-3 mr-1" />面试题</TabsTrigger></TabsList>
+            <TabsList>
+              <TabsTrigger value="framework"><Building2 className="w-3 h-3 mr-1" />公司调研</TabsTrigger>
+              <TabsTrigger value="questions"><Target className="w-3 h-3 mr-1" />面试题</TabsTrigger>
+            </TabsList>
             <TabsContent value="framework"><FrameworkView framework={result.companyFramework} /></TabsContent>
             <TabsContent value="questions"><QuestionsView questions={result.businessQuestions} /></TabsContent>
           </Tabs>

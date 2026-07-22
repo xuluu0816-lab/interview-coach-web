@@ -11,14 +11,17 @@ const router = Router();
 router.use(optionalAuth);
 
 router.post('/text', async (req: Request, res: Response) => {
-  const { text, analysis_type } = req.body as { text: string; analysis_type: string };
+  const { text, analysis_type, prompt } = req.body as { text: string; analysis_type: string; prompt?: string };
   if (!text?.trim()) return res.status(400).json({ error: true, message: '文本内容不能为空' });
 
   try {
     if (analysis_type === 'jd_prep') {
+      const extraInstruction = prompt?.trim()
+        ? `\n\n用户补充分析要求（请优先满足以下要求）：${prompt.trim()}`
+        : '';
       const result = await chatJSON<any>([
         { role: 'system', content: SYSTEM_PERSONA },
-        { role: 'user', content: `作为资深面试教练，分析以下岗位JD，生成面试预习材料。\n## JD内容\n${text}\n\n输出JSON：{"companyFramework":{"overview":"","businessLines":[],"competitors":[],"recentNews":[],"culture":"","interviewStyle":""},"businessQuestions":[{"id":"q1","scenario":"","question":"","category":"","referenceAnswer":""}]}。businessQuestions至少10题，覆盖BQ/产品设计/数据分析/估算/CASE。输出纯JSON不含markdown。` },
+        { role: 'user', content: `作为资深面试教练，分析以下岗位JD，生成面试预习材料。${extraInstruction}\n## JD内容\n${text}\n\n输出JSON：{"companyFramework":{"overview":"","businessLines":[],"competitors":[],"recentNews":[],"culture":"","interviewStyle":""},"businessQuestions":[{"id":"q1","scenario":"","question":"","category":"","referenceAnswer":""}]}。businessQuestions至少10题，覆盖BQ/产品设计/数据分析/估算/CASE。输出纯JSON不含markdown。` },
       ], { temperature: 0.3, maxTokens: 4096 });
       return res.json(result);
     }

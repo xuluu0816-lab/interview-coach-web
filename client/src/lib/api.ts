@@ -108,23 +108,38 @@ export async function getAppStats(): Promise<{ total: number; by_status: Record<
 export async function saveJob(id: string): Promise<void> { return request(`/jobs/${id}/save`, { method: 'POST' }); }
 export async function unsaveJob(id: string): Promise<void> { return request(`/jobs/${id}/save`, { method: 'DELETE' }); }
 
-// ===== 模块1: 预习 — 先上传文件再分析 =====
-export async function uploadAndAnalyzeJD(fileOrText: { file?: File; text?: string }): Promise<JdPrepResult> {
-  let parsedText = fileOrText.text || '';
-  if (fileOrText.file) {
-    const uploaded = await uploadFile(fileOrText.file);
-    const detail = await getFileDetail(uploaded.id);
-    parsedText = detail.parsed_text || '';
+// ===== 模块1: JD预习 — 支持粘贴文本 / 上传文件 + 自定义 prompt =====
+
+/**
+ * JD 预习分析（统一入口）
+ * - jdText: 手动粘贴的 JD 文本
+ * - fileId: 上传文件后返回的缓存 ID（与 jdText 二选一，优先使用 fileId）
+ * - prompt: 用户自定义分析要求（如"请重点分析技术栈"），可选
+ */
+export async function analyzeJDPrep(
+  jdText?: string,
+  fileId?: string,
+  prompt?: string,
+): Promise<JdPrepResult> {
+  // 解析 JD 文本来源
+  let resolvedText = jdText?.trim() || '';
+  if (fileId) {
+    const confirmed = await confirmPrep(fileId, 'jd');
+    resolvedText = confirmed.text;
   }
-  if (!parsedText.trim()) throw new Error('未能提取JD文本内容');
-  // 使用已有的 analyze 接口，传分析类型为 jd
+  if (!resolvedText) throw new Error('请提供 JD 内容：粘贴文本或上传 JD 文件');
+
   const token = localStorage.getItem('token');
   const res = await fetch(`${BASE_URL}/analyze/text`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify({ text: parsedText, analysis_type: 'jd_prep' }),
+    body: JSON.stringify({
+      text: resolvedText,
+      analysis_type: 'jd_prep',
+      prompt: prompt?.trim() || undefined,
+    }),
   });
-  if (!res.ok) throw new Error('JD分析失败');
+  if (!res.ok) throw new Error((await res.json().catch(() => ({ message: 'JD分析失败' }))).message);
   return res.json();
 }
 
