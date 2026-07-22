@@ -92,7 +92,7 @@ router.delete('/:id', (req: Request, res: Response) => {
   return res.json({ success: true });
 });
 
-// ── Gemini 多模态简历解析（PNG/JPG/PDF/Word 直传，无需 OCR，免费）──
+// ── 智谱 GLM 多模态简历解析（PNG/JPG 直传，PDF/Word 提取后 LLM 整理）──
 router.post('/parse-resume', (req: Request, res: Response, next: Function) => {
   upload.single('file')(req, res, (err: any) => {
     if (err) {
@@ -119,8 +119,8 @@ router.post('/parse-resume', (req: Request, res: Response, next: Function) => {
   }
 
   try {
-    const { parseResumeWithGemini } = require('../services/ai/gemini');
-    const parsedText = await parseResumeWithGemini(req.file.path, req.file.originalname, mimeType);
+    const { parseResumeWithZhipu } = require('../services/ai/zhipu');
+    const parsedText = await parseResumeWithZhipu(req.file.path, req.file.originalname, mimeType);
     return res.json({ text: parsedText, filename: req.file.originalname });
   } catch (err: any) {
     console.error('Resume parse error:', err.message);

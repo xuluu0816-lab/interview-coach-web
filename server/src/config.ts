@@ -28,12 +28,12 @@ export const config = {
     temperature: parseFloat(process.env.DEEPSEEK_TEMPERATURE || '0.7'),
   },
 
-  // Google Gemini API — 多模态文件解析（PNG/JPG/PDF 直传，免费）
-  // 免费获取 API Key: https://aistudio.google.com/apikey
-  gemini: {
-    apiKey: process.env.GEMINI_API_KEY || '',
-    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-    maxTokens: parseInt(process.env.GEMINI_MAX_TOKENS || '4096', 10),
+  // 智谱 AI (GLM) — 多模态+文本简历解析
+  // 免费获取 API Key: https://open.bigmodel.cn/usercenter/apikeys
+  zhipu: {
+    apiKey: process.env.ZHIPU_API_KEY || '',
+    visionModel: process.env.ZHIPU_VISION_MODEL || 'glm-4v-flash',
+    textModel: process.env.ZHIPU_TEXT_MODEL || 'glm-4-flash',
   },
 
   // 文件上传
