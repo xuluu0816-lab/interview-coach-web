@@ -14,6 +14,7 @@ interface InterviewContext {
   role?: string;
   level?: string;
   questionTypes?: string[];
+  jdContext?: string;
   resumeContext?: string;
 }
 
@@ -67,7 +68,9 @@ export async function streamInterviewChat(
     const messages = [
       { role: 'system' as const, content: `${SYSTEM_PERSONA}\n\n${INTERVIEWER_PROMPT({
         company: context.company, role: context.role, level: context.level,
-        questionTypes: context.questionTypes, resumeContext: context.resumeContext,
+        questionTypes: context.questionTypes,
+        jdContext: context.jdContext,
+        resumeContext: context.resumeContext,
         questionHistory, currentQuestionIndex: 0,
       })}` },
       { role: 'user' as const, content: '请开始面试，出一个开场白并给出第一道面试题。' },
@@ -122,7 +125,9 @@ export async function streamInterviewChat(
     const nextMessages = [
       { role: 'system' as const, content: `${SYSTEM_PERSONA}\n\n${INTERVIEWER_PROMPT({
         company: context.company, role: context.role, level: context.level,
-        questionTypes: context.questionTypes, resumeContext: context.resumeContext,
+        questionTypes: context.questionTypes,
+        jdContext: context.jdContext,
+        resumeContext: context.resumeContext,
         questionHistory: [...questionHistory, picked.question_text], currentQuestionIndex: questionHistory.length,
       })}` },
       { role: 'user' as const, content: '请自然过渡并出一道新的面试题。' },

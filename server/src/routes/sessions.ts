@@ -8,9 +8,17 @@ const router = Router();
 router.use(optionalAuth);
 
 router.post('/', (req: Request, res: Response) => {
-  const { company, role, level } = req.body;
+  const { company, role, level, jdText, resumeText } = req.body;
   const id = uuidv4();
-  db().insert(sessions).values({ id, user_id: req.userId!, company: company || null, role: role || null, level: level || null, status: 'active' }).run();
+  db().insert(sessions).values({
+    id, user_id: req.userId!,
+    company: company || null,
+    role: role || null,
+    level: level || null,
+    jd_text: jdText || null,
+    resume_text: resumeText || null,
+    status: 'active',
+  }).run();
   saveDb();
   const session = db().select().from(sessions).where(eq(sessions.id, id)).all()[0];
   return res.status(201).json(session);

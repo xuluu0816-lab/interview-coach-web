@@ -11,10 +11,8 @@ router.post('/:id/chat', (req: Request, res: Response) => {
   const sessionId = req.params.id;
   const { action, message } = req.body;
 
-  const session = db().select().from(sessions).where(eq(sessions.id, sessionId)).all()[0];
+  const session = db().select().from(sessions).where(eq(sessions.id, sessionId)).all()[0] as any;
   if (!session) return res.status(404).json({ error: true, message: '会话不存在' });
-
-  let resumeContext: string | undefined;
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -30,10 +28,11 @@ router.post('/:id/chat', (req: Request, res: Response) => {
   streamInterviewChat(
     {
       sessionId,
-      company: (session as any).company || undefined,
-      role: (session as any).role || undefined,
-      level: (session as any).level || undefined,
-      resumeContext,
+      company: session.company || undefined,
+      role: session.role || undefined,
+      level: session.level || undefined,
+      jdContext: session.jd_text || undefined,
+      resumeContext: session.resume_text || undefined,
     },
     { action, message },
     (event) => sendSSE(event.type, event.data)

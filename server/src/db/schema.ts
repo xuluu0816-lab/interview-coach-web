@@ -16,6 +16,8 @@ export const sessions = sqliteTable('sessions', {
   company: text('company'),
   role: text('role'),
   level: text('level'), // entry | 1-3y | 3-5y | 5y+
+  jd_text: text('jd_text'),
+  resume_text: text('resume_text'),
   status: text('status').default('active').notNull(), // active | completed | archived
   created_at: text('created_at').default("(datetime('now'))").notNull(),
   completed_at: text('completed_at'),

@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   company TEXT,
   role TEXT,
   level TEXT,
+  jd_text TEXT,
+  resume_text TEXT,
   status TEXT DEFAULT 'active',
   created_at TEXT DEFAULT (datetime('now')),
   completed_at TEXT
@@ -142,6 +144,10 @@ export async function initDb(): Promise<ReturnType<typeof drizzle>> {
     // 创建表
     sqlDb.run('PRAGMA foreign_keys = ON');
     sqlDb.run(CREATE_TABLES_SQL);
+
+    // 兼容旧表结构（v1 → v2 迁移）
+    try { sqlDb.run('ALTER TABLE sessions ADD COLUMN jd_text TEXT'); } catch {}
+    try { sqlDb.run('ALTER TABLE sessions ADD COLUMN resume_text TEXT'); } catch {}
 
     _sqlDb = sqlDb;
     _drizzle = drizzle(sqlDb, { schema });
