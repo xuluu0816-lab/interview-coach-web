@@ -1,12 +1,16 @@
 /**
  * 文本分析路由 — POST /api/analyze/text  |  POST /api/analyze/jd-file
  * 支持直接传文本或通过缓存文件 ID 进行分析
+ *
+ * 解析模型（与模拟面试简历上传一致）：
+ * 本地解析(pdf-parse/mammoth/tesseract) → 智谱 GLM-4-Flash 结构化 → DeepSeek 深度分析
  */
 import { Router, Request, Response } from 'express';
 import { optionalAuth } from '../middleware/auth';
 import { db, uploadedFiles } from '../db';
 import { eq } from 'drizzle-orm';
 import { chatJSON } from '../services/ai/client';
+import { parseJDWithAI } from '../services/ai/zhipu';
 import { SYSTEM_PERSONA, RESUME_ANALYZER_PROMPT, JD_ANALYZER_PROMPT } from '../services/ai/prompts';
 
 const router = Router();
@@ -44,7 +48,7 @@ router.post('/text', async (req: Request, res: Response) => {
   }
 });
 
-/** POST /jd-file — 通过缓存文件 ID 分析 JD（不暴露解析文本给前端） */
+/** POST /jd-file — 缓存文件 ID → 智谱结构化 → DeepSeek 深度分析（不暴露原始文本给前端） */
 router.post('/jd-file', async (req: Request, res: Response) => {
   const { fileId, prompt } = req.body as { fileId?: string; prompt?: string };
   if (!fileId) return res.status(400).json({ error: true, message: '请提供 fileId' });
@@ -54,7 +58,10 @@ router.post('/jd-file', async (req: Request, res: Response) => {
   if (!file.parsed_text?.trim()) return res.status(400).json({ error: true, message: '文件解析内容为空，请重新上传' });
 
   try {
-    return res.json(await runJDAnalysis(file.parsed_text, prompt));
+    // ① 智谱 GLM-4-Flash 结构化 JD 文本（与简历解析同模型）
+    const structuredJD = await parseJDWithAI(file.parsed_text);
+    // ② DeepSeek 深度分析（公司调研 + 面试题）
+    return res.json(await runJDAnalysis(structuredJD, prompt));
   } catch (err: any) {
     return res.status(500).json({ error: true, message: `AI分析失败: ${err.message}` });
   }
