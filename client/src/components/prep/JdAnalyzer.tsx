@@ -141,7 +141,7 @@ export function JdAnalyzer() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" />JD 预习分析</CardTitle>
-            <CardDescription>上传 JD 文件（最多 {MAX_FILES} 个），可选填写分析要求，AI 生成综合面试预习报告（解析过程在后端完成，不展示原始内容）</CardDescription>
+            <CardDescription>上传 JD 文件（最多 {MAX_FILES} 个），可选填写分析要求，AI 生成综合面试预习报告</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* ① 用户自定义分析要求 */}
@@ -187,7 +187,6 @@ export function JdAnalyzer() {
                     选择文件{jdFiles.length > 0 ? `（+）` : ''}
                   </Button>
                 </label>
-                <span className="text-xs text-gray-400">PDF / Word / 图片 / TXT · 支持多选 · 后端静默解析</span>
               </div>
 
               {/* 文件列表 */}

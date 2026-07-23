@@ -204,9 +204,6 @@ export function MockSetup({ onStart }: Props) {
     <div className="max-w-2xl mx-auto space-y-4">
       <div>
         <h2 className="text-xl font-bold">AI模拟面试配置</h2>
-        <p className="text-sm text-gray-500">
-          上传简历和JD，AI 基于真实经历深度提问。简历文本不会在前端展示，所有 AI 调用经后端中转。
-        </p>
       </div>
 
       {/* ── 补充说明 ── */}
@@ -256,7 +253,6 @@ export function MockSetup({ onStart }: Props) {
                 上传 JD 文件{jdFiles.length > 0 ? `（+）` : ''}
               </Button>
             </label>
-            <span className="text-xs text-gray-400">PDF / Word / 图片 / TXT · 支持多选 · 本地解析</span>
           </div>
 
           {/* JD 文件列表 */}
@@ -285,7 +281,7 @@ export function MockSetup({ onStart }: Props) {
           )}
 
           {jdFiles.length === 0 && (
-            <p className="text-xs text-gray-400">请上传岗位 JD 文件（PDF / Word / 图片 / TXT），支持多选，最多 {MAX_FILES} 个</p>
+            <p className="text-xs text-gray-400">请上传岗位 JD 文件，最多 {MAX_FILES} 个</p>
           )}
         </CardContent>
       </Card>
@@ -319,7 +315,6 @@ export function MockSetup({ onStart }: Props) {
                 上传简历文件
               </Button>
             </label>
-            <span className="text-xs text-gray-400">PDF / Word / 图片 · 本地 OCR 解析 · 内容不会在前端展示</span>
 
             {resumeStatus === 'parsing' && (
               <span className="text-xs text-blue-500 flex items-center gap-1">
@@ -342,10 +337,7 @@ export function MockSetup({ onStart }: Props) {
           </div>
 
           {!resumeFileId && (
-            <p className="text-xs text-gray-400">
-              请上传简历文件（PDF / Word / PNG / JPG），上传后仅显示文件名，原始文本不在前端展示。
-              点击"开始AI模拟面试"后，后端才会调用智谱大模型进行解析。
-            </p>
+            <p className="text-xs text-gray-400">请上传简历文件</p>
           )}
         </CardContent>
       </Card>
