@@ -110,9 +110,10 @@ function autoSeed() {
 
 async function start() {
   process.stderr.write('[BOOT] start() begin\n');
-  console.log('Initializing database...');
+  process.stderr.write(`[BOOT] config.port=${config.port}, cwd=${process.cwd()}\n`);
+  process.stderr.write('[BOOT] about to call initDb...\n');
   await initDb();
-  console.log('Database initialized.');
+  process.stderr.write('[BOOT] initDb returned successfully\n');
 
   // 自动填充题库
   autoSeed();
