@@ -125,9 +125,9 @@ async function start() {
   warmUpOcr();
   process.stderr.write('[BOOT] warmUpOcr completed\n');
 
-  process.stderr.write(`[BOOT] about to listen on port ${config.port}...\n`);
-  app.listen(config.port, () => {
-    process.stderr.write(`[BOOT] Server running on port ${config.port}\n`);
+  process.stderr.write(`[BOOT] about to listen on 0.0.0.0:${config.port}...\n`);
+  app.listen(config.port, '0.0.0.0', () => {
+    process.stderr.write(`[BOOT] Server running on 0.0.0.0:${config.port}\n`);
   });
 }
 

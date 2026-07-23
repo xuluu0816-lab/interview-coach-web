@@ -16,6 +16,10 @@ import analyzeRoutes from './routes/analyze';
 const app = express();
 
 // 基础中间件
+app.use((req, _res, next) => {
+  process.stderr.write(`[REQ] ${req.method} ${req.url}\n`);
+  next();
+});
 app.use(cors({ origin: config.cors.origin, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
