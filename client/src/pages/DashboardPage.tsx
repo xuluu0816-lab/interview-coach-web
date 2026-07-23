@@ -26,9 +26,8 @@ export default function DashboardPage() {
   const appOfferCount = apps.filter(a => a.currentStage === 'final').length;
 
   const modules = [
-    { title: '面试预习', desc: '上传JD，AI生成公司调研 + 面试题', icon: FileSearch, color: 'bg-blue-50 text-blue-600', path: '/prep' },
+    { title: '面试准备', desc: '上传JD/简历，AI生成公司调研 + 面试题 + 模拟面试', icon: FileSearch, color: 'bg-blue-50 text-blue-600', path: '/prep' },
     { title: '面试复盘', desc: '上传录音/录屏，AI转写 + 专业复盘', icon: ListTodo, color: 'bg-purple-50 text-purple-600', path: '/review' },
-    { title: 'AI模拟面试', desc: 'JD+简历 → AI双向深度追问', icon: MessageSquare, color: 'bg-green-50 text-green-600', path: '/mock' },
     { title: '投递追踪', desc: '6阶段看板 · 时间线 · 进度追踪', icon: Briefcase, color: 'bg-orange-50 text-orange-600', path: '/track' },
   ];
 
