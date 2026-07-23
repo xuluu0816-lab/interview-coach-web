@@ -140,7 +140,7 @@ export function JdAnalyzer() {
       {step === 'input' && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" />JD 预习分析</CardTitle>
+            <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" />JD 分析</CardTitle>
             <CardDescription>上传 JD 文件（最多 {MAX_FILES} 个），可选填写分析要求，AI 生成综合面试预习报告</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
