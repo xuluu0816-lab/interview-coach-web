@@ -6,7 +6,7 @@ const router = Router();
 
 router.get('/', (req: Request, res: Response) => {
   const { category, difficulty, sub_category } = req.query;
-  let query = db().select().from(questionBank);
+  let query: any = db().select().from(questionBank);
   if (category && typeof category === 'string') query = query.where(eq(questionBank.category, category as any));
   if (difficulty && typeof difficulty === 'string') query = query.where(eq(questionBank.difficulty, difficulty as any));
   if (sub_category && typeof sub_category === 'string') query = query.where(eq(questionBank.sub_category, sub_category as any));
@@ -15,7 +15,7 @@ router.get('/', (req: Request, res: Response) => {
 
 router.get('/random', (req: Request, res: Response) => {
   const { category, difficulty } = req.query;
-  let query = db().select().from(questionBank);
+  let query: any = db().select().from(questionBank);
   if (category && typeof category === 'string') query = query.where(eq(questionBank.category, category as any));
   if (difficulty && typeof difficulty === 'string') query = query.where(eq(questionBank.difficulty, difficulty as any));
   const all = query.all();

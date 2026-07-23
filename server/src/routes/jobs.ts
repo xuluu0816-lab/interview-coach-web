@@ -9,7 +9,7 @@ router.use(optionalAuth);
 
 router.get('/', (req: Request, res: Response) => {
   const { q, job_type, city } = req.query;
-  let result = db().select().from(jobListings);
+  let result: any = db().select().from(jobListings);
   if (q && typeof q === 'string') result = result.where(or(like(jobListings.position, `%${q}%`), like(jobListings.company, `%${q}%`))) as any;
   if (job_type && typeof job_type === 'string') result = result.where(eq(jobListings.job_type, job_type as any));
   if (city && typeof city === 'string') result = result.where(like(jobListings.city, `%${city}%`));
