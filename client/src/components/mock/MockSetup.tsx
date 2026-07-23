@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
-import { createSession, prepResumeFile, prepJDFile, cacheText, confirmPrep } from '@/lib/api';
+import { createSession, prepResumeFile, prepJDFile, confirmPrep } from '@/lib/api';
 import type { Session, MockInterviewConfig } from '@/types';
 import { Upload, ArrowRight, FileText, User, Loader2, CheckCircle, AlertCircle, X } from 'lucide-react';
 
@@ -23,9 +23,11 @@ interface JdFileEntry {
 interface Props { onStart: (session: Session, config: MockInterviewConfig) => void; }
 
 export function MockSetup({ onStart }: Props) {
+  // ── 用户补充说明 ──
+  const [userNotes, setUserNotes] = useState('');
+
   // ── JD 多文件上传 ──
   const [jdFiles, setJdFiles] = useState<JdFileEntry[]>([]);
-  const [jdText, setJdText] = useState('');
 
   // ── 简历 ──
   const [resumeFileId, setResumeFileId] = useState<string | null>(null);
@@ -154,7 +156,7 @@ export function MockSetup({ onStart }: Props) {
         resumeText = result.text;
       }
 
-      // ② 确认 JD：多文件缓存 → AI 解析 + 合并 / 手动粘贴 → 缓存 → AI 解析
+      // ② 确认 JD：多文件缓存 → AI 解析 + 合并
       const validJdFiles = jdFiles.filter(f => f.status === 'done' && f.id);
       if (validJdFiles.length > 0) {
         const parsedTexts: string[] = [];
@@ -169,11 +171,11 @@ export function MockSetup({ onStart }: Props) {
         jdTextFinal = validJdFiles.length === 1
           ? parsedTexts[0]
           : parsedTexts.join('\n\n---\n\n');
-      } else if (jdText.trim()) {
-        // 手动粘贴的 JD 文本：先缓存，再调用 AI 解析
-        const cached = await cacheText(jdText.trim(), 'jd');
-        const result = await confirmPrep(cached.id, 'jd');
-        jdTextFinal = result.text;
+      }
+
+      // ③ 用户补充说明：拼接到 JD 文本前面
+      if (userNotes.trim()) {
+        jdTextFinal = `用户补充说明：${userNotes.trim()}\n\n${jdTextFinal}`;
       }
 
       const session = await createSession({
@@ -196,7 +198,7 @@ export function MockSetup({ onStart }: Props) {
 
   const validJdCount = jdFiles.filter(f => f.status === 'done').length;
   const uploadingJdCount = jdFiles.filter(f => f.status === 'uploading').length;
-  const canStart = resumeFileId || validJdCount > 0 || jdText.trim();
+  const canStart = resumeFileId || validJdCount > 0;
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
@@ -206,6 +208,21 @@ export function MockSetup({ onStart }: Props) {
           上传简历和JD，AI 基于真实经历深度提问。简历文本不会在前端展示，所有 AI 调用经后端中转。
         </p>
       </div>
+
+      {/* ── 补充说明 ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">补充说明</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            className="min-h-[80px]"
+            placeholder="如有额外的面试要求或补充信息，请在此填写（可选）…"
+            value={userNotes}
+            onChange={e => setUserNotes(e.target.value)}
+          />
+        </CardContent>
+      </Card>
 
       {/* ── JD 卡片 ── */}
       <Card>
@@ -267,14 +284,8 @@ export function MockSetup({ onStart }: Props) {
             </div>
           )}
 
-          {/* 或手动粘贴（无文件上传时显示） */}
           {jdFiles.length === 0 && (
-            <Textarea
-              className="min-h-[120px]"
-              placeholder="或直接粘贴岗位 JD 文本..."
-              value={jdText}
-              onChange={e => setJdText(e.target.value)}
-            />
+            <p className="text-xs text-gray-400">请上传岗位 JD 文件（PDF / Word / 图片 / TXT），支持多选，最多 {MAX_FILES} 个</p>
           )}
         </CardContent>
       </Card>
