@@ -1,16 +1,22 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// 加载 .env 文件（优先项目根目录）
+// 加载 .env 文件（多个可能位置兜底）
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+if (process.env.NODE_ENV === 'production') {
+  // Render 上 rootDir=server 时，cwd 是 server/，.env 也在 server/ 下
+  dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+}
 
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
 
-  // 数据库
+  // 数据库（生产环境用 cwd 避免写权限问题）
   db: {
-    path: process.env.DB_PATH || path.resolve(__dirname, '../../data/interview-coach.db'),
+    path: process.env.DB_PATH || (process.env.NODE_ENV === 'production'
+      ? path.resolve(process.cwd(), 'data/interview-coach.db')
+      : path.resolve(__dirname, '../../data/interview-coach.db')),
   },
 
   // JWT
@@ -38,7 +44,9 @@ export const config = {
   // 文件上传
   upload: {
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '52428800', 10), // 50MB
-    uploadDir: path.resolve(__dirname, '../uploads'),
+    uploadDir: process.env.NODE_ENV === 'production'
+      ? path.resolve(process.cwd(), 'uploads')
+      : path.resolve(__dirname, '../uploads'),
   },
 
   // CORS
