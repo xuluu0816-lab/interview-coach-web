@@ -116,13 +116,18 @@ async function start() {
   process.stderr.write('[BOOT] initDb returned successfully\n');
 
   // 自动填充题库
+  process.stderr.write('[BOOT] about to call autoSeed...\n');
   autoSeed();
+  process.stderr.write('[BOOT] autoSeed completed\n');
 
   // 预热 OCR 引擎（后台下载 tesseract.js 语言包，避免首次图片上传超时）
+  process.stderr.write('[BOOT] about to call warmUpOcr...\n');
   warmUpOcr();
+  process.stderr.write('[BOOT] warmUpOcr completed\n');
 
+  process.stderr.write(`[BOOT] about to listen on port ${config.port}...\n`);
   app.listen(config.port, () => {
-    console.log(`Server running on port ${config.port}`);
+    process.stderr.write(`[BOOT] Server running on port ${config.port}\n`);
   });
 }
 
