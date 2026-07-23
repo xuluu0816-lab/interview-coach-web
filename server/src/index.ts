@@ -126,8 +126,12 @@ async function start() {
   process.stderr.write('[BOOT] warmUpOcr completed\n');
 
   process.stderr.write(`[BOOT] about to listen on 0.0.0.0:${config.port}...\n`);
-  app.listen(config.port, '0.0.0.0', () => {
+  const server = app.listen(config.port, '0.0.0.0', () => {
     process.stderr.write(`[BOOT] Server running on 0.0.0.0:${config.port}\n`);
+    // 心跳日志：每 10 秒打印一次，确认进程没有静默死亡
+    setInterval(() => {
+      process.stderr.write(`[ALIVE] uptime=${Math.round(process.uptime())}s, mem=${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB\n`);
+    }, 10_000);
   });
 }
 
