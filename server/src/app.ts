@@ -39,7 +39,10 @@ app.use('/api/applications', applicationRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/analyze', analyzeRoutes);
 
-// 健康检查
+// 健康检查（Render 会检查 / 和 /api/health）
+app.get('/', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
