@@ -258,7 +258,7 @@ export default function ReviewPage() {
         <div>
           <h1 className="text-2xl font-bold">面试复盘</h1>
           <p className="text-gray-500 text-sm mt-1">
-            上传面试录音/视频，AI 语音转文字 · 根据停顿自动分割为问答文档
+            上传面试录音/视频，AI 语音转文字
           </p>
         </div>
         {recording && (
