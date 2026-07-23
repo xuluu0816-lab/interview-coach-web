@@ -7,7 +7,6 @@ services:
     runtime: node
     region: singapore
     plan: free
-    rootDir: server
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
