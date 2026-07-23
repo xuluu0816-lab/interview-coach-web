@@ -1,3 +1,15 @@
+// 【调试】最早期的启动日志，排查 Render 运行时崩溃
+process.stderr.write('[BOOT] server/src/index.ts — process started\n');
+
+// 捕获未处理的异常，防止静默崩溃
+process.on('uncaughtException', (err) => {
+  process.stderr.write(`[FATAL] uncaughtException: ${err.message}\n${err.stack}\n`);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  process.stderr.write(`[FATAL] unhandledRejection: ${reason}\n`);
+});
+
 import app from './app';
 import { config } from './config';
 import { initDb, db, saveDb, questionBank } from './db';
@@ -97,6 +109,7 @@ function autoSeed() {
 }
 
 async function start() {
+  process.stderr.write('[BOOT] start() begin\n');
   console.log('Initializing database...');
   await initDb();
   console.log('Database initialized.');
@@ -112,7 +125,9 @@ async function start() {
   });
 }
 
+process.stderr.write('[BOOT] calling start()...\n');
 start().catch(err => {
   console.error('Failed to start server:', err);
+  process.stderr.write(`[FATAL] start() failed: ${err.message}\n${err.stack}\n`);
   process.exit(1);
 });
