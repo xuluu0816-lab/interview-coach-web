@@ -10,13 +10,18 @@ import type { JdPrepResult, CompanyFramework, BusinessQuestion } from '@/types';
 import { Loader2, Copy, Download, RefreshCw, Upload, FileText, Building2, Target, CheckCircle, AlertCircle, X } from 'lucide-react';
 
 const JD_ACCEPT = '.pdf,.docx,.doc,.png,.jpg,.jpeg,.txt';
+const MAX_FILES = 5;
+
+interface JdFileEntry {
+  id?: string;
+  filename: string;
+  status: 'uploading' | 'done' | 'error';
+  error?: string;
+}
 
 export function JdAnalyzer() {
-  // ── JD 文件上传（后端静默解析，前端只显示文件名）──
-  const [jdFileId, setJdFileId] = useState<string | null>(null);
-  const [jdFileName, setJdFileName] = useState('');
-  const [jdUploading, setJdUploading] = useState(false);
-  const [jdFileStatus, setJdFileStatus] = useState<'idle' | 'parsing' | 'done' | 'error'>('idle');
+  // ── 多文件上传状态 ──
+  const [jdFiles, setJdFiles] = useState<JdFileEntry[]>([]);
 
   // ── 用户自定义分析要求 ──
   const [userPrompt, setUserPrompt] = useState('');
@@ -29,43 +34,85 @@ export function JdAnalyzer() {
 
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // ── 文件上传 → 后端本地解析 + 缓存（前端不可见）──
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // ── 文件选择 → 并行上传 ──
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(e.target.files || []);
+    if (selectedFiles.length === 0) return;
 
-    setJdFileName(file.name);
-    setJdUploading(true);
-    setJdFileStatus('parsing');
+    // 过滤：同批次内去重
+    const uniqueNew = selectedFiles.filter(
+      (f, i, arr) => arr.findIndex(x => x.name === f.name) === i
+    );
 
-    try {
-      const result = await prepJDFile(file);
-      setJdFileId(result.id);
-      setJdFileStatus('done');
-    } catch (err: any) {
-      setJdFileStatus('error');
-      alert('JD 文件解析失败: ' + (err.message === 'Failed to fetch'
-        ? '无法连接后端服务器（免费服务器可能正在休眠，请稍后重试）'
-        : err.message));
-    } finally {
-      setJdUploading(false);
+    // 过滤：不与已有文件重复
+    const trulyNew = uniqueNew.filter(
+      f => !jdFiles.some(existing => existing.filename === f.name)
+    );
+    const duplicateCount = uniqueNew.length - trulyNew.length;
+
+    // 检查上限
+    const slotsLeft = MAX_FILES - jdFiles.length;
+    const filesToUpload = trulyNew.slice(0, slotsLeft);
+    const overflowCount = trulyNew.length - filesToUpload.length;
+
+    const messages: string[] = [];
+    if (duplicateCount > 0) messages.push(`${duplicateCount} 个文件已存在，已跳过`);
+    if (overflowCount > 0) messages.push(`超出上限 ${overflowCount} 个，最多 ${MAX_FILES} 个文件`);
+    if (messages.length > 0) alert(messages.join('\n'));
+
+    if (filesToUpload.length === 0) {
       if (fileRef.current) fileRef.current.value = '';
+      return;
     }
+
+    // 占位：所有新文件标记为 uploading
+    const newEntries: JdFileEntry[] = filesToUpload.map(f => ({
+      filename: f.name,
+      status: 'uploading' as const,
+    }));
+    setJdFiles(prev => [...prev, ...newEntries]);
+
+    // 并行上传，用 allSettled 保证一个失败不影响其他
+    const results = await Promise.allSettled(
+      filesToUpload.map(f => prepJDFile(f))
+    );
+
+    // 逐个更新状态
+    setJdFiles(prev => {
+      const updated = [...prev];
+      let newIdx = updated.length - newEntries.length;
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled') {
+          updated[newIdx + i] = { id: r.value.id, filename: r.value.filename, status: 'done' };
+        } else {
+          const errMsg = r.reason?.message || '上传失败';
+          const displayMsg = errMsg === 'Failed to fetch'
+            ? '无法连接后端服务器（免费服务器可能正在休眠，请稍后重试）'
+            : errMsg;
+          updated[newIdx + i] = { filename: filesToUpload[i].name, status: 'error', error: displayMsg };
+        }
+      });
+      return updated;
+    });
+
+    if (fileRef.current) fileRef.current.value = '';
   };
 
-  const clearFile = () => {
-    setJdFileId(null);
-    setJdFileName('');
-    setJdFileStatus('idle');
+  // ── 移除单个文件 ──
+  const removeFile = (index: number) => {
+    setJdFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   // ── AI 生成分析 ──
   const handleAnalyze = async () => {
-    if (!jdFileId) return;
+    const validFiles = jdFiles.filter(f => f.status === 'done' && f.id);
+    if (validFiles.length === 0) return;
+
     setLoading(true);
     setStep('analyzing');
     try {
-      const data = await analyzeJDPrep(jdFileId, userPrompt || undefined);
+      const fileIds = validFiles.map(f => f.id!);
+      const data = await analyzeJDPrep(fileIds, userPrompt || undefined);
       setResult(data);
       setStep('result');
     } catch (err: any) {
@@ -84,6 +131,9 @@ export function JdAnalyzer() {
     const blob = new Blob([t], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `面试预习_${Date.now()}.txt`; a.click();
   };
 
+  const validCount = jdFiles.filter(f => f.status === 'done').length;
+  const uploadingCount = jdFiles.filter(f => f.status === 'uploading').length;
+
   return (
     <div className="space-y-4">
       {/* ── 输入面板 ── */}
@@ -91,10 +141,10 @@ export function JdAnalyzer() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" />JD 预习分析</CardTitle>
-            <CardDescription>上传 JD 文件，可选填写分析要求，AI 生成面试预习报告（解析过程在后端完成，不展示原始内容）</CardDescription>
+            <CardDescription>上传 JD 文件（最多 {MAX_FILES} 个），可选填写分析要求，AI 生成综合面试预习报告（解析过程在后端完成，不展示原始内容）</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* ① 用户自定义分析要求（放在上方） */}
+            {/* ① 用户自定义分析要求 */}
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1.5 block">
                 补充分析要求 <span className="text-gray-400 font-normal">（可选）</span>
@@ -111,55 +161,67 @@ export function JdAnalyzer() {
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1.5 block">
                 上传 JD 文件 <span className="text-red-400">*</span>
+                <span className="text-gray-400 font-normal ml-1">（{jdFiles.length}/{MAX_FILES}）</span>
               </label>
-              <div className="flex items-center gap-3 flex-wrap">
+
+              {/* 上传按钮 */}
+              <div className="flex items-center gap-3 flex-wrap mb-3">
                 <label className="cursor-pointer">
                   <input
                     ref={fileRef}
                     type="file"
                     className="hidden"
                     accept={JD_ACCEPT}
-                    onChange={handleFileUpload}
-                    disabled={jdUploading}
+                    multiple
+                    onChange={handleFileSelect}
+                    disabled={jdFiles.length >= MAX_FILES}
                   />
                   <Button
                     variant="outline"
                     size="sm"
                     className="gap-1.5"
-                    disabled={jdUploading}
+                    disabled={jdFiles.length >= MAX_FILES}
                     onClick={(e) => { e.preventDefault(); fileRef.current?.click(); }}
                   >
-                    {jdUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                    选择文件
+                    <Upload className="w-3.5 h-3.5" />
+                    选择文件{jdFiles.length > 0 ? `（+）` : ''}
                   </Button>
                 </label>
-                <span className="text-xs text-gray-400">PDF / Word / 图片 / TXT · 后端静默解析</span>
-
-                {jdFileStatus === 'parsing' && (
-                  <span className="text-xs text-blue-500 flex items-center gap-1">
-                    <Loader2 className="w-3 h-3 animate-spin" />{jdFileName}
-                  </span>
-                )}
-                {jdFileStatus === 'done' && jdFileName && (
-                  <Badge variant="secondary" className="gap-1 text-xs">
-                    <CheckCircle className="w-3 h-3 text-green-600" />
-                    {jdFileName}
-                    <X className="w-3 h-3 cursor-pointer ml-0.5 hover:text-red-500" onClick={clearFile} />
-                  </Badge>
-                )}
-                {jdFileStatus === 'error' && (
-                  <span className="text-xs text-red-500 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />解析失败
-                    <X className="w-3 h-3 cursor-pointer hover:text-red-700" onClick={clearFile} />
-                  </span>
-                )}
+                <span className="text-xs text-gray-400">PDF / Word / 图片 / TXT · 支持多选 · 后端静默解析</span>
               </div>
+
+              {/* 文件列表 */}
+              {jdFiles.length > 0 && (
+                <div className="space-y-1.5 border rounded-lg p-3">
+                  {jdFiles.map((f, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm py-1">
+                      <span className="flex items-center gap-2 min-w-0">
+                        {f.status === 'uploading' && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500 shrink-0" />}
+                        {f.status === 'done' && <CheckCircle className="w-3.5 h-3.5 text-green-600 shrink-0" />}
+                        {f.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+                        <span className={`truncate ${f.status === 'error' ? 'text-red-600' : ''}`}>
+                          {f.filename}
+                          {f.status === 'error' && f.error && (
+                            <span className="text-red-400 ml-1 text-xs">— {f.error}</span>
+                          )}
+                        </span>
+                      </span>
+                      <X
+                        className="w-3.5 h-3.5 cursor-pointer text-gray-400 hover:text-red-500 shrink-0 ml-2"
+                        onClick={() => removeFile(i)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ③ 分析按钮 */}
-            <Button onClick={handleAnalyze} disabled={!jdFileId || loading} className="w-full">
+            <Button onClick={handleAnalyze} disabled={validCount === 0 || loading} className="w-full">
               {loading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
-              AI 生成分析
+              {validCount > 0
+                ? `AI 生成分析（基于 ${validCount} 个文件）`
+                : uploadingCount > 0 ? `等待 ${uploadingCount} 个文件上传中…` : 'AI 生成分析'}
             </Button>
           </CardContent>
         </Card>
@@ -170,7 +232,7 @@ export function JdAnalyzer() {
         <Card>
           <CardContent className="py-12 text-center space-y-4">
             <Loader2 className="w-10 h-10 animate-spin mx-auto text-primary" />
-            <p className="text-lg font-medium">AI 正在分析 JD{userPrompt ? '（含自定义要求）' : ''}...</p>
+            <p className="text-lg font-medium">AI 正在分析 {validCount} 个 JD 文件{userPrompt ? '（含自定义要求）' : ''}...</p>
             <Progress value={60} className="max-w-xs mx-auto" />
           </CardContent>
         </Card>

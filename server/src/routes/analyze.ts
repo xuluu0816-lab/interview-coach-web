@@ -48,18 +48,33 @@ router.post('/text', async (req: Request, res: Response) => {
   }
 });
 
-/** POST /jd-file — 缓存文件 ID → 智谱结构化 → DeepSeek 深度分析（不暴露原始文本给前端） */
+/** POST /jd-file — 缓存文件 ID(s) → 智谱结构化 → DeepSeek 深度分析（不暴露原始文本给前端）
+ *  支持单个 fileId（兼容旧版）或 fileIds 数组（最多 5 个） */
 router.post('/jd-file', async (req: Request, res: Response) => {
-  const { fileId, prompt } = req.body as { fileId?: string; prompt?: string };
-  if (!fileId) return res.status(400).json({ error: true, message: '请提供 fileId' });
+  let { fileId, fileIds, prompt } = req.body as { fileId?: string; fileIds?: string[]; prompt?: string };
 
-  const file = db().select().from(uploadedFiles).where(eq(uploadedFiles.id, fileId)).all()[0] as any;
-  if (!file) return res.status(404).json({ error: true, message: '文件不存在，请重新上传' });
-  if (!file.parsed_text?.trim()) return res.status(400).json({ error: true, message: '文件解析内容为空，请重新上传' });
+  // 兼容旧版单 fileId 参数
+  if (fileId && !fileIds) fileIds = [fileId];
+  if (!fileIds?.length) return res.status(400).json({ error: true, message: '请提供 fileIds（文件 ID 数组）' });
+  if (fileIds.length > 5) return res.status(400).json({ error: true, message: '最多支持 5 个文件同时分析' });
+
+  // 查出所有文件，校验存在且内容非空
+  const files: { id: string; filename: string; parsed_text: string }[] = [];
+  for (const id of fileIds) {
+    const f = db().select().from(uploadedFiles).where(eq(uploadedFiles.id, id)).all()[0] as any;
+    if (!f) return res.status(404).json({ error: true, message: `文件 ${id.slice(0, 8)}… 不存在，请重新上传` });
+    if (!f.parsed_text?.trim()) return res.status(400).json({ error: true, message: `文件「${f.filename}」解析内容为空，请重新上传` });
+    files.push({ id: f.id, filename: f.filename, parsed_text: f.parsed_text!.trim() });
+  }
+
+  // 拼接所有文件文本（多文件加文件名标记分隔）
+  const combinedText = files.length === 1
+    ? files[0].parsed_text
+    : files.map(f => `## ${f.filename}\n${f.parsed_text}`).join('\n\n---\n\n');
 
   try {
     // ① 智谱 GLM-4-Flash 结构化 JD 文本（与简历解析同模型）
-    const structuredJD = await parseJDWithAI(file.parsed_text);
+    const structuredJD = await parseJDWithAI(combinedText);
     // ② DeepSeek 深度分析（公司调研 + 面试题）
     return res.json(await runJDAnalysis(structuredJD, prompt));
   } catch (err: any) {
