@@ -122,17 +122,17 @@ export async function unsaveJob(id: string): Promise<void> { return request(`/jo
 // ===== 模块1: JD预习 — 上传文件 + 自定义 prompt =====
 
 /**
- * JD 预习分析（文件上传模式，支持多文件）
- * - fileIds: prepJDFile 返回的缓存 ID 数组（最多 5 个）
+ * JD 预习分析（文件上传模式）
+ * - fileId: prepJDFile 返回的缓存 ID
  * - prompt: 用户自定义分析要求（如"请重点分析技术栈"），可选
  * 后端直接读取缓存文本调用 AI，不经过前端
  */
-export async function analyzeJDPrep(fileIds: string[], prompt?: string): Promise<JdPrepResult> {
+export async function analyzeJDPrep(fileId: string, prompt?: string): Promise<JdPrepResult> {
   const token = localStorage.getItem('token');
   const res = await fetch(`${BASE_URL}/analyze/jd-file`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify({ fileIds, prompt: prompt?.trim() || undefined }),
+    body: JSON.stringify({ fileId, prompt: prompt?.trim() || undefined }),
   });
   if (!res.ok) throw new Error((await res.json().catch(() => ({ message: 'JD分析失败' }))).message);
   return res.json();
