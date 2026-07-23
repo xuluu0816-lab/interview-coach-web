@@ -16,8 +16,11 @@ import analyzeRoutes from './routes/analyze';
 const app = express();
 
 // 基础中间件
-app.use((req, _res, next) => {
-  process.stderr.write(`[REQ] ${req.method} ${req.url}\n`);
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    process.stderr.write(`[REQ] ${req.method} ${req.url} → ${res.statusCode} (${Date.now() - start}ms)\n`);
+  });
   next();
 });
 app.use(cors({ origin: config.cors.origin, credentials: true }));
