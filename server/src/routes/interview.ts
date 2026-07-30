@@ -9,7 +9,7 @@ router.use(optionalAuth);
 
 router.post('/:id/chat', (req: Request, res: Response) => {
   const sessionId = req.params.id;
-  const { action, message } = req.body;
+  const { action, message, confidence, intensity, feedbackMode } = req.body;
 
   const session = db().select().from(sessions).where(eq(sessions.id, sessionId)).all()[0] as any;
   if (!session) return res.status(404).json({ error: true, message: '会话不存在' });
@@ -34,7 +34,7 @@ router.post('/:id/chat', (req: Request, res: Response) => {
       jdContext: session.jd_text || undefined,
       resumeContext: session.resume_text || undefined,
     },
-    { action, message },
+    { action, message, confidence, intensity, feedbackMode },
     (event) => sendSSE(event.type, event.data)
   ).then(() => res.end()).catch((err) => { sendSSE('error', { message: err.message }); res.end(); });
 });

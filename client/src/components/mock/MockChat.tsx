@@ -41,7 +41,7 @@ export function MockChat({ session, config, onBack }: Props) {
           setMessages(prev => [...prev, { role: 'interviewer', content: fullStream || data.text as string, isQuestion: true, category: data.category as string }]);
           setStreamingText(''); fullStream = '';
         }
-        if (type === 'quick_feedback' && data) {
+        if (type === 'quick_feedback' && data && config.feedbackMode === 'practice') {
           setFeedback(data as RealTimeFeedback);
         }
         if (type === 'done') {
@@ -50,7 +50,9 @@ export function MockChat({ session, config, onBack }: Props) {
         }
       },
       (err) => { setIsStreaming(false); alert('请求失败：' + err.message); },
-      () => { setIsStreaming(false); setTimeout(() => inputRef.current?.focus(), 100); }
+      () => { setIsStreaming(false); setTimeout(() => inputRef.current?.focus(), 100); },
+      config.intensity,
+      config.feedbackMode
     );
   };
 
@@ -85,7 +87,7 @@ export function MockChat({ session, config, onBack }: Props) {
       {/* 对话区 */}
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3"><Button variant="ghost" onClick={onBack} size="sm"><ArrowLeft className="w-4 h-4" /></Button><div><h2 className="font-semibold">AI模拟面试</h2><p className="text-xs text-gray-400">已提问 {questionCount} 题 | 模式：{config.mode === 'deep_dive' ? '纵向深挖' : config.mode === 'cross_scenario' ? '横向拓展' : '混合'}</p></div></div>
+          <div className="flex items-center gap-3"><Button variant="ghost" onClick={onBack} size="sm"><ArrowLeft className="w-4 h-4" /></Button><div><h2 className="font-semibold">AI模拟面试</h2><p className="text-xs text-gray-400">已提问 {questionCount} 题 | {config.feedbackMode === 'practice' ? '练习模式' : '考试模式'} | {config.intensity === 'mild' ? '温和HR' : config.intensity === 'deep' ? '深挖技术' : 'Bar-raiser'}</p></div></div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setShowContext(!showContext)}><PanelRight className="w-4 h-4 mr-1" />JD/简历</Button>
             <Button variant="outline" size="sm" onClick={handleSkip} disabled={isStreaming}><SkipForward className="w-4 h-4 mr-1" />跳过</Button>

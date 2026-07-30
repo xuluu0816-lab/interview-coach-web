@@ -35,9 +35,9 @@ export function MockSetup({ onStart }: Props) {
   const [resumeUploading, setResumeUploading] = useState(false);
   const [resumeStatus, setResumeStatus] = useState<'idle' | 'parsing' | 'done' | 'error'>('idle');
 
-  // ── 面试设置 ──
-  const [mode, setMode] = useState<MockInterviewConfig['mode']>('mixed');
-  const [questionCount, setQuestionCount] = useState(5);
+  // ── 面试设置（MockInterview.skill Step 0.7）──
+  const [feedbackMode, setFeedbackMode] = useState<MockInterviewConfig['feedbackMode']>('practice');
+  const [intensity, setIntensity] = useState<MockInterviewConfig['intensity']>('deep');
   const [language, setLanguage] = useState<'zh' | 'en'>('zh');
   const [loading, setLoading] = useState(false);
 
@@ -185,8 +185,8 @@ export function MockSetup({ onStart }: Props) {
       onStart(session, {
         jdText: jdTextFinal || undefined,
         resumeText: resumeText || undefined,
-        mode,
-        questionCount,
+        feedbackMode,
+        intensity,
         language,
       });
     } catch (err: any) {
@@ -342,22 +342,23 @@ export function MockSetup({ onStart }: Props) {
         </CardContent>
       </Card>
 
-      {/* ── 面试设置 ── */}
+      {/* ── 面试设置（MockInterview.skill Step 0.7）── */}
       <Card>
         <CardHeader><CardTitle className="text-base">面试设置</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-3 gap-3">
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">提问模式</label>
-            <Select value={mode} onChange={e => setMode(e.target.value as any)}>
-              <option value="mixed">混合模式</option>
-              <option value="deep_dive">纵向深挖</option>
-              <option value="cross_scenario">横向拓展</option>
+            <label className="text-xs text-gray-400 mb-1 block">反馈模式</label>
+            <Select value={feedbackMode} onChange={e => setFeedbackMode(e.target.value as any)}>
+              <option value="practice">练习模式（每题即时反馈）</option>
+              <option value="exam">考试模式（最后统一出报告）</option>
             </Select>
           </div>
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">题目数量</label>
-            <Select value={String(questionCount)} onChange={e => setQuestionCount(Number(e.target.value))}>
-              {[3, 5, 8, 10].map(n => <option key={n} value={n}>{n} 题</option>)}
+            <label className="text-xs text-gray-400 mb-1 block">考官凶狠度</label>
+            <Select value={intensity} onChange={e => setIntensity(e.target.value as any)}>
+              <option value="mild">温和 HR</option>
+              <option value="deep">深挖技术</option>
+              <option value="bar_raiser">Bar-raiser（高压）</option>
             </Select>
           </div>
           <div>

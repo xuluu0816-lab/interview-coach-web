@@ -38,8 +38,14 @@ export interface QAPair { id: string; question: string; answer: string; startTim
 export interface RecordingFile { id: string; filename: string; fileType: 'mp3' | 'mp4' | 'wav'; fileSize: number; duration?: number; status: 'uploading' | 'transcribing' | 'completed' | 'error'; transcription?: string; questions?: ExtractedQuestion[]; report?: ReviewReport; qaPairs?: QAPair[]; segments?: import('@/lib/stt').WhisperSegment[]; }
 export interface ExtractedQuestion { index: number; timestamp?: string; questionText: string; answerText?: string; interviewerNotes?: string; }
 
-// ===== 模块2: AI模拟面试 =====
-export interface MockInterviewConfig { jdFileId?: string; resumeFileId?: string; jdText?: string; resumeText?: string; mode: 'deep_dive' | 'cross_scenario' | 'mixed'; questionCount: number; language: 'zh' | 'en'; }
+// ===== 模块2: AI模拟面试（MockInterview.skill 驱动） =====
+export interface MockInterviewConfig {
+  jdFileId?: string; resumeFileId?: string;
+  jdText?: string; resumeText?: string;
+  feedbackMode: 'practice' | 'exam';    // 练习模式（每题反馈）/ 考试模式（最后统一出报告）
+  intensity: 'mild' | 'deep' | 'bar_raiser';  // 温和HR / 深挖技术 / Bar-raiser
+  language: 'zh' | 'en';
+}
 export interface RealTimeFeedback { questionId: string; scores: Scores; total: number; quickTips: string; deepDiveSuggestion?: string; }
 
 // ===== 模块3: 投递追踪（7阶段） =====

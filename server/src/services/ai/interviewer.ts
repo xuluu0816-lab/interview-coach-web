@@ -29,6 +29,12 @@ interface InterviewContext {
   resumeContext?: string;
 }
 
+/** MockInterview.skill Step 0.7 设置 */
+interface InterviewSettings {
+  intensity?: 'mild' | 'deep' | 'bar_raiser';
+  feedbackMode?: 'practice' | 'exam';
+}
+
 // ── 从 AI 输出末尾提取题型标签 [CATEGORY-SUB] 或 [CATEGORY] ──
 function parseQuestionTag(text: string): { question: string; category: string; sub_category: string } | null {
   const match = text.match(/\[([A-Z]{2,4})(?:-(\S+?))?\]\s*$/m);
@@ -96,18 +102,25 @@ async function generateFirstQuestion(
   };
 }
 
-/** 生成追问（锁定深挖风格） */
+/** 生成追问（锁定深挖风格，强度驱动） */
 async function generateFollowUp(
   context: InterviewContext,
   currentQ: { question_text: string; category: string },
   answer: string,
+  intensity: string,
   onToken: (t: string) => void,
 ): Promise<string> {
   const hasContext = !!(context.jdContext || context.resumeContext);
 
+  const intensityGuide = intensity === 'bar_raiser'
+    ? '你是 Bar-raiser，专找逻辑漏洞，追问要尖锐直接："你说的这个数字怎么来的？谁定的标准？如果换个做法会怎样？"'
+    : intensity === 'mild'
+      ? '你是温和 HR，追问要礼貌克制，点到为止。'
+      : '你是深挖技术面试官，沿技术细节往下钻。';
+
   const followUpPrompt = hasContext
-    ? `刚才题目：[${currentQ.category}] ${currentQ.question_text}\n候选人回答：${answer}\n\n作为 INTERVIEWER，请锁定当前这道题锁定的简历动作，沿"工具→量级→你的判断→成果"方向进行1次追问。追问要具体指向回答中未说清楚的点。${context.resumeContext ? '优先针对简历经历深挖，不要切换到别的经历。' : ''}`
-    : `刚才题目：[${currentQ.category}] ${currentQ.question_text}\n候选人回答：${answer}\n\n回答比较简短，请作为严格的面试官进行1次追问深挖。`;
+    ? `刚才题目：[${currentQ.category}] ${currentQ.question_text}\n候选人回答：${answer}\n\n${intensityGuide}\n作为 INTERVIEWER，请锁定当前题目涉及的简历动作，沿"工具→量级→你的判断→成果"方向进行追问。${context.resumeContext ? '不要切换到别的经历。' : ''}`
+    : `刚才题目：[${currentQ.category}] ${currentQ.question_text}\n候选人回答：${answer}\n\n${intensityGuide}\n请进行追问深挖。`;
 
   let fullText = '';
   await chatStream(
@@ -154,11 +167,15 @@ async function generateNextQuestion(
 
 export async function streamInterviewChat(
   context: InterviewContext,
-  request: { action: string; message?: string; confidence?: number },
+  request: { action: string; message?: string; confidence?: number; intensity?: string; feedbackMode?: string },
   onEvent: (event: { type: string; data: Record<string, unknown> }) => void,
 ): Promise<void> {
-  const { action, message, confidence } = request;
+  const { action, message, confidence, intensity, feedbackMode } = request;
   const hasContext = !!(context.jdContext || context.resumeContext);
+  const settings: InterviewSettings = {
+    intensity: (intensity as 'mild' | 'deep' | 'bar_raiser') || 'deep',
+    feedbackMode: (feedbackMode as 'practice' | 'exam') || 'practice',
+  };
 
   const existingQuestions = db().select().from(interviewQuestions)
     .where(eq(interviewQuestions.session_id, context.sessionId))
@@ -217,24 +234,31 @@ export async function streamInterviewChat(
     db().update(interviewQuestions).set(updateData).where(eq(interviewQuestions.id, currentQ.id)).run();
     saveDb();
 
-    // ── ASSESSOR 判断是否深挖 ──
-    const shouldDeepDive = hasContext
-      ? message.length < 400  // JD+简历模式：400字以下视为回答不充分，触发追问
-      : currentQ.category === 'BQ' && message.length < 200;
+    // ── ASSESSOR 判断是否深挖（强度影响阈值）──
+    const deepDiveThreshold = settings.intensity === 'bar_raiser'
+      ? 600   // Bar-raiser：几乎每题都追问
+      : settings.intensity === 'mild'
+        ? 150  // 温和HR：只有极短回答才追问
+        : 400;  // 深挖技术：中短回答触发追问
+
+    const shouldDeepDive = message.length < deepDiveThreshold;
 
     if (shouldDeepDive) {
       try {
-        await generateFollowUp(context, currentQ, message,
+        await generateFollowUp(context, currentQ, message, settings.intensity || 'deep',
           (token) => onEvent({ type: 'token', data: { text: token } }),
         );
-        onEvent({ type: 'done', data: { question_id: currentQ.id, follow_up: true } });
+        onEvent({ type: 'done', data: { question_id: currentQ.id, follow_up: true, intensity: settings.intensity } });
       } catch (err: any) {
         onEvent({ type: 'error', data: { message: err.message } });
       }
     } else {
-      // 回答充分 → 简短过渡 + 标记可评分
-      onEvent({ type: 'token', data: { text: '好的，了解了。' } });
-      onEvent({ type: 'done', data: { question_id: currentQ.id, review_signal: true } });
+      if (settings.feedbackMode === 'practice') {
+        onEvent({ type: 'token', data: { text: '好的，了解了。' } });
+      } else {
+        onEvent({ type: 'token', data: { text: '好的。' } });
+      }
+      onEvent({ type: 'done', data: { question_id: currentQ.id, review_signal: true, feedbackMode: settings.feedbackMode } });
     }
     return;
   }
