@@ -12,12 +12,42 @@
  *      当前动作挖完前绝不切换话题
  *   3. 信心盲区：用户作答前自评信心(1-5)，答后对照实际表现，落差最大的即最该补的洞
  */
-import { chatStream } from './client';
-import { INTERVIEWER_DEEPDIVE_PROMPT, SYSTEM_PERSONA, ASSESSOR_SCORING_PROMPT } from './prompts';
+import { chatStream, chat } from './client';
+import { INTERVIEWER_DEEPDIVE_PROMPT, SYSTEM_PERSONA, ASSESSOR_SCORING_PROMPT, RECRUITER_RUBRIC_PROMPT } from './prompts';
 import { db, saveDb, interviewQuestions } from '../../db';
-import { eq, sql } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import type { QuestionCategory, QuestionSubCategory } from '../../types';
+
+/** RECRUITER 生成的题目（含隐藏评分标准） */
+interface PreparedQuestion {
+  id: string;
+  round: string;         // 行为面 / 简历深挖 / 案例设计 / 技术领域
+  dimension: string;     // D1-D7
+  question: string;
+  lockedExperience: string;
+  hiddenRubric: { weak: string; pass: string; strong: string };
+  referenceAnswer: string;
+  deepDiveChain: string[];
+  category: string;
+  subCategory: string;
+}
+
+/** RECRUITER 输出 */
+interface RecruiterOutput {
+  questions: PreparedQuestion[];
+  resumeXjdMatrix?: Array<{
+    experience: string;
+    category: string;
+    reason: string;
+    digDirection: string;
+  }>;
+  dimensionFramework?: Array<{
+    dimension: string;
+    description: string;
+    weight: string;
+  }>;
+}
 
 interface InterviewContext {
   sessionId: string;
@@ -162,6 +192,102 @@ async function generateNextQuestion(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// PHASE 0 — RECRUITER：生成题库 + 隐藏评分标准
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 面试开始前，调用 DeepSeek 预生成带隐藏标准的题库。
+ * 提取出 JSON 中的题目列表，转换为 PreparedQuestion[]。
+ */
+async function runRecruiterPhase(
+  context: InterviewContext,
+  onProgress: (msg: string) => void,
+): Promise<RecruiterOutput> {
+  onProgress('RECRUITER 启动：简历×JD 交集分析 + 生成隐藏评分标准题库…');
+
+  const hasResume = !!(context.resumeContext);
+  const hasJD = !!(context.jdContext);
+
+  const prompt = RECRUITER_RUBRIC_PROMPT({
+    company: context.company,
+    role: context.role,
+    jdContext: context.jdContext,
+    resumeContext: hasResume ? context.resumeContext : undefined,
+  });
+
+  const response = await chat([
+    { role: 'system', content: prompt },
+    { role: 'user', content: hasResume && hasJD
+      ? '请完成简历×JD交集分析，然后生成 8-12 道面试题（含隐藏评分标准和三档评估）。输出完整 JSON。'
+      : '请基于 JD 生成 8-12 道面试题（含隐藏评分标准和三档评估），覆盖行为面/案例设计/技术领域。输出完整 JSON。'
+    },
+  ], { temperature: 0.3, maxTokens: 4096 });
+
+  // 提取 JSON
+  const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const jsonStr = jsonMatch ? jsonMatch[1].trim() : response.trim();
+
+  try {
+    const parsed = JSON.parse(jsonStr) as RecruiterOutput;
+
+    // 给每道题补充 category / subCategory
+    if (parsed.questions) {
+      parsed.questions = parsed.questions.map((q, i) => {
+        const round = q.round || '行为面';
+        let category = 'BQ';
+        let subCategory = '';
+        if (round.includes('案例') || round.includes('设计')) { category = 'CASE'; subCategory = 'product'; }
+        else if (round.includes('技术')) { category = 'GEN'; subCategory = 'tech'; }
+        else if (round.includes('深挖')) { category = 'BQ'; subCategory = 'deep-dive'; }
+
+        return {
+          ...q,
+          id: `recruit_q${i + 1}`,
+          category,
+          subCategory: q.subCategory || subCategory,
+        };
+      });
+    }
+
+    onProgress(`RECRUITER 完成：生成 ${parsed.questions?.length || 0} 道题，${parsed.resumeXjdMatrix?.length || 0} 条简历×JD交集`);
+    return parsed;
+  } catch {
+    // JSON 解析失败 → 回退到逐题生成模式
+    onProgress('RECRUITER JSON 解析失败，回退逐题生成模式');
+    return { questions: [] };
+  }
+}
+
+/**
+ * 将 RECRUITER 生成的题目存入 interview_questions 表
+ * 隐藏评分标准存储在 feedback 字段（JSON），出题阶段对用户隐藏
+ */
+function storeQuestionBank(sessionId: string, questions: PreparedQuestion[]): void {
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    db().insert(interviewQuestions).values({
+      id: uuidv4(),
+      session_id: sessionId,
+      question_text: q.question,
+      category: q.category as QuestionCategory,
+      sub_category: q.subCategory as QuestionSubCategory,
+      sequence: i + 1,
+      // 隐藏标准存入 feedback（JSON），前端不展示
+      feedback: JSON.stringify({
+        recruiterId: q.id,
+        round: q.round,
+        dimension: q.dimension,
+        lockedExperience: q.lockedExperience,
+        hiddenRubric: q.hiddenRubric,
+        referenceAnswer: q.referenceAnswer,
+        deepDiveChain: q.deepDiveChain,
+      }),
+    }).run();
+  }
+  saveDb();
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 主入口
 // ═══════════════════════════════════════════════════════════════
 
@@ -186,29 +312,71 @@ export async function streamInterviewChat(
   );
 
   // ═══════════════════════════════════════
-  // START — 开始面试 / 第一题
+  // START — PHASE 0 RECRUITER → PHASE 1 第一题
   // ═══════════════════════════════════════
   if (action === 'start' || questionHistory.length === 0) {
-    const sequence = existingQuestions.length + 1;
-    const qId = uuidv4();
-
     try {
-      const { questionText, category, subCategory } = await generateFirstQuestion(
-        context, questionHistory,
-        (token) => onEvent({ type: 'token', data: { text: token } }),
+      // ── PHASE 0：RECRUITER 生成题库 + 隐藏评分标准 ──
+      const { questions: bank, resumeXjdMatrix, dimensionFramework } = await runRecruiterPhase(
+        context,
+        (msg) => onEvent({ type: 'recruiter_progress', data: { message: msg } }),
       );
 
-      db().insert(interviewQuestions).values({
-        id: qId, session_id: context.sessionId,
-        question_text: questionText,
-        category: category as QuestionCategory,
-        sub_category: subCategory as QuestionSubCategory,
-        sequence,
-      }).run();
-      saveDb();
+      if (bank.length > 0) {
+        // 将预生成的题库存入 DB
+        storeQuestionBank(context.sessionId, bank);
 
-      onEvent({ type: 'question', data: { question_id: qId, category: `${category}-${subCategory}`, text: questionText } });
-      onEvent({ type: 'done', data: { question_id: qId } });
+        // 通知前端 RECRUITER 结果（简历×JD交集 + 维度框架，评分标准隐藏）
+        onEvent({ type: 'recruiter_done', data: {
+          questionCount: bank.length,
+          rounds: [...new Set(bank.map(q => q.round))],
+          resumeXjdMatrix: resumeXjdMatrix || [],
+          dimensionFramework: dimensionFramework || [],
+        }});
+
+        // ── PHASE 1：取第一道预存题开始面试 ──
+        const allStored = db().select().from(interviewQuestions)
+          .where(eq(interviewQuestions.session_id, context.sessionId))
+          .orderBy(sql`sequence ASC`).all();
+        const firstQ = allStored[0];
+
+        // 用面试官口吻读出第一题
+        const introPrompt = `你是 INTERVIEWER。面试即将开始。以下是第一道题，请用自然的面试官口吻进行简短开场（1-2句），然后读出题目。题目：${firstQ.question_text}`;
+        let introText = '';
+        await chatStream(
+          [{ role: 'system', content: `${SYSTEM_PERSONA}\n${INTERVIEWER_DEEPDIVE_PROMPT}` }, { role: 'user', content: introPrompt }],
+          (token) => { introText += token; onEvent({ type: 'token', data: { text: token } }); },
+          () => {
+            onEvent({ type: 'question', data: {
+              question_id: firstQ.id,
+              category: `${firstQ.category}${firstQ.sub_category ? '-' + firstQ.sub_category : ''}`,
+              text: firstQ.question_text,
+              sequence: 1,
+              totalQuestions: bank.length,
+            }});
+            onEvent({ type: 'done', data: { question_id: firstQ.id } });
+          },
+          (err) => onEvent({ type: 'error', data: { message: err.message } }),
+        );
+      } else {
+        // ── RECRUITER 失败 → 回退到逐题 AI 生成 ──
+        onEvent({ type: 'recruiter_done', data: { fallback: true, message: '题库生成失败，回退逐题模式' } });
+        const { questionText, category, subCategory } = await generateFirstQuestion(
+          context, questionHistory,
+          (token) => onEvent({ type: 'token', data: { text: token } }),
+        );
+        const qId = uuidv4();
+        db().insert(interviewQuestions).values({
+          id: qId, session_id: context.sessionId,
+          question_text: questionText,
+          category: category as QuestionCategory,
+          sub_category: subCategory as QuestionSubCategory,
+          sequence: 1,
+        }).run();
+        saveDb();
+        onEvent({ type: 'question', data: { question_id: qId, category: `${category}-${subCategory}`, text: questionText } });
+        onEvent({ type: 'done', data: { question_id: qId } });
+      }
     } catch (err: any) {
       onEvent({ type: 'error', data: { message: err.message } });
     }
@@ -264,29 +432,71 @@ export async function streamInterviewChat(
   }
 
   // ═══════════════════════════════════════
-  // NEXT — 出下一题（锁定深挖风格）
+  // NEXT — 从预存题库中取下一题（PHASE 1 续）
   // ═══════════════════════════════════════
   if (action === 'next_question') {
     const sequence = existingQuestions.length + 1;
-    const qId = uuidv4();
+
+    // 优先从预存题库中查找
+    const nextStored = db().select().from(interviewQuestions)
+      .where(and(
+        eq(interviewQuestions.session_id, context.sessionId),
+        eq(interviewQuestions.sequence, sequence),
+      ))
+      .all()[0];
 
     try {
-      const { questionText, category, subCategory } = await generateNextQuestion(
-        context, questionHistory,
-        (token) => onEvent({ type: 'token', data: { text: token } }),
-      );
+      if (nextStored) {
+        // ── 使用预存题 ──
+        try {
+          const meta = JSON.parse(nextStored.feedback || '{}');
+          const round = meta.round || '';
 
-      db().insert(interviewQuestions).values({
-        id: qId, session_id: context.sessionId,
-        question_text: questionText,
-        category: category as QuestionCategory,
-        sub_category: subCategory as QuestionSubCategory,
-        sequence,
-      }).run();
-      saveDb();
-
-      onEvent({ type: 'question', data: { question_id: qId, category: `${category}-${subCategory}`, text: questionText } });
-      onEvent({ type: 'done', data: { question_id: qId } });
+          const transitionPrompt = `你是 INTERVIEWER。${round ? `当前进入「${round}」轮次。` : ''}请自然过渡（1句话），然后读出下面这道题：${nextStored.question_text}`;
+          let transText = '';
+          await chatStream(
+            [{ role: 'system', content: `${SYSTEM_PERSONA}\n${INTERVIEWER_DEEPDIVE_PROMPT}` }, { role: 'user', content: transitionPrompt }],
+            (token) => { transText += token; onEvent({ type: 'token', data: { text: token } }); },
+            () => {
+              onEvent({ type: 'question', data: {
+                question_id: nextStored.id,
+                category: `${nextStored.category}${nextStored.sub_category ? '-' + nextStored.sub_category : ''}`,
+                text: nextStored.question_text,
+                sequence,
+                round,
+              }});
+              onEvent({ type: 'done', data: { question_id: nextStored.id } });
+            },
+            (err) => onEvent({ type: 'error', data: { message: err.message } }),
+          );
+        } catch {
+          // 直接读题（无过渡）
+          onEvent({ type: 'question', data: {
+            question_id: nextStored.id,
+            category: `${nextStored.category}${nextStored.sub_category ? '-' + nextStored.sub_category : ''}`,
+            text: nextStored.question_text,
+            sequence,
+          }});
+          onEvent({ type: 'done', data: { question_id: nextStored.id } });
+        }
+      } else {
+        // ── 预存题用完 → AI 生成 ──
+        const { questionText, category, subCategory } = await generateNextQuestion(
+          context, questionHistory,
+          (token) => onEvent({ type: 'token', data: { text: token } }),
+        );
+        const qId = uuidv4();
+        db().insert(interviewQuestions).values({
+          id: qId, session_id: context.sessionId,
+          question_text: questionText,
+          category: category as QuestionCategory,
+          sub_category: subCategory as QuestionSubCategory,
+          sequence,
+        }).run();
+        saveDb();
+        onEvent({ type: 'question', data: { question_id: qId, category: `${category}-${subCategory}`, text: questionText } });
+        onEvent({ type: 'done', data: { question_id: qId } });
+      }
     } catch (err: any) {
       onEvent({ type: 'error', data: { message: err.message } });
     }
