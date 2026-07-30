@@ -34,9 +34,9 @@ export async function getSession(id: string): Promise<Session & { questions: Int
 export async function deleteSession(id: string): Promise<void> { return request(`/sessions/${id}`, { method: 'DELETE' }); }
 
 // ========== 面试对话 SSE ==========
-export function streamChat(sessionId: string, action: string, message: string, onToken: (text: string) => void, onEvent: (type: string, data: any) => void, onError: (err: Error) => void, onDone: () => void): AbortController {
+export function streamChat(sessionId: string, action: string, message: string, confidence: number, onToken: (text: string) => void, onEvent: (type: string, data: any) => void, onError: (err: Error) => void, onDone: () => void): AbortController {
   const controller = new AbortController(); const token = localStorage.getItem('token');
-  fetch(`${BASE_URL}/sessions/${sessionId}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ action, message }), signal: controller.signal })
+  fetch(`${BASE_URL}/sessions/${sessionId}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ action, message, confidence }), signal: controller.signal })
     .then(async res => {
       if (!res.ok) { onError(new Error((await res.json().catch(() => ({ message: 'SSE failed' }))).message)); return; }
       const reader = res.body?.getReader(); if (!reader) { onError(new Error('No stream')); return; }
@@ -50,6 +50,8 @@ export function streamChat(sessionId: string, action: string, message: string, o
 // ========== 复盘 ==========
 export async function generateReview(sessionId: string): Promise<ReviewReport> { return request(`/sessions/${sessionId}/review`, { method: 'POST' }); }
 export async function completeSession(sessionId: string): Promise<Session> { return request(`/sessions/${sessionId}/complete`, { method: 'POST' }); }
+/** MockInterview 风格差距报告（维度雷达 + 信心盲区 + 简历体检） */
+export async function generateGapReport(sessionId: string): Promise<any> { return request(`/sessions/${sessionId}/gap-report`, { method: 'POST' }); }
 
 // ========== 题库 ==========
 export async function getQuestions(params?: { category?: string; difficulty?: string }): Promise<QuestionBankItem[]> { const s = new URLSearchParams(); if (params?.category) s.set('category', params.category); if (params?.difficulty) s.set('difficulty', params.difficulty); const qs = s.toString(); return request(`/questions${qs ? `?${qs}` : ''}`); }

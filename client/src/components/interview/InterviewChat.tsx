@@ -45,7 +45,7 @@ export function InterviewChat({ session, config, onBack }: Props) {
     let fullStream = '';
 
     streamChat(
-      session.id, action, msg,
+      session.id, action, msg, 3,
       // onToken
       (token) => {
         fullStream += token;
