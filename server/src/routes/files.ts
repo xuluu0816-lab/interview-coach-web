@@ -7,7 +7,7 @@ import { optionalAuth } from '../middleware/auth';
 import { config } from '../config';
 import { db, saveDb, uploadedFiles } from '../db';
 import { eq, desc } from 'drizzle-orm';
-import { parseFile, getFileType } from '../services/file/parser';
+import { parseFile, getFileType, getOcrStatus } from '../services/file/parser';
 import { chatJSON } from '../services/ai/client';
 import { parseResumeWithAI, parseJDWithAI } from '../services/ai/zhipu';
 import { RESUME_ANALYZER_PROMPT, JD_ANALYZER_PROMPT, SYSTEM_PERSONA } from '../services/ai/prompts';
@@ -234,6 +234,24 @@ router.post('/cache-text', (req: Request, res: Response) => {
   return res.status(201).json({ id });
 });
 
+// ── 文件解析服务诊断端点 ──
+router.get('/diagnostics/parse-status', (_req: Request, res: Response) => {
+  const ocr = getOcrStatus();
+  const zhipuConfigured = !!(config as any).zhipu?.apiKey;
+  const deepseekConfigured = !!(config as any).deepseek?.apiKey;
+  return res.json({
+    ocr,
+    apiKeys: {
+      zhipu: zhipuConfigured ? 'configured' : 'missing',
+      deepseek: deepseekConfigured ? 'configured' : 'missing',
+    },
+    supportedFormats: ['txt', 'pdf', 'docx', 'doc', 'png', 'jpg', 'jpeg'],
+    tip: ocr.status !== 'ready'
+      ? '图片格式(PNG/JPG)暂不可用，请使用 PDF / Word / TXT 格式上传。'
+      : '所有文件格式均可正常使用。',
+  });
+});
+
 /**
  * POST /:id/confirm — 确认后调用智谱 AI 解析缓存文本
  * 请求：JSON { type: 'resume' | 'jd' }
@@ -266,6 +284,11 @@ router.post('/:id/confirm', async (req: Request, res: Response) => {
     return res.json({ text: result });
   } catch (err: any) {
     console.error('Zhipu confirm error:', err.message);
+    // 如果智谱 AI 不可用（API Key 缺失等），回退返回原始解析文本
+    if (err.message?.includes('未配置') || err.message?.includes('API')) {
+      console.log('Falling back to raw parsed text (Zhipu unavailable)');
+      return res.json({ text: file.parsed_text });
+    }
     return res.status(500).json({ error: true, message: `AI 解析失败: ${err.message}` });
   }
 });

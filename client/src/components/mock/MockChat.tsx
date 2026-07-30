@@ -4,7 +4,7 @@ import { Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { streamChat, generateReview, generateGapReport, completeSession } from '@/lib/api';
-import type { Session, MockInterviewConfig, ChatMessage, ReviewReport, RealTimeFeedback } from '@/types';
+import type { Session, MockInterviewConfig, ChatMessage, ReviewReport, RealTimeFeedback, RecruiterContext } from '@/types';
 import { ContextPanel } from './ContextPanel';
 import { ArrowLeft, Send, SkipForward, Loader2, PanelRight, Star } from 'lucide-react';
 import { ReviewReport as ReviewReportComponent } from '@/components/review/ReviewReport';
@@ -25,6 +25,7 @@ export function MockChat({ session, config, onBack }: Props) {
   const [feedback, setFeedback] = useState<RealTimeFeedback | null>(null);
   const [confidence, setConfidence] = useState(3); // 信心自评 1-5
   const [currentRound, setCurrentRound] = useState('行为面'); // 当前轮次
+  const [recruiterContext, setRecruiterContext] = useState<RecruiterContext | null>(null); // RECRUITER Phase 0 结果
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -37,6 +38,10 @@ export function MockChat({ session, config, onBack }: Props) {
     streamChat(session.id, action, msg, confidence,
       (token) => { fullStream += token; setStreamingText(fullStream); },
       (type, data) => {
+        if (type === 'recruiter_context') {
+          // RECRUITER Phase 0 预备结果：存储交集分析 + 维度框架
+          setRecruiterContext(data as RecruiterContext);
+        }
         if (type === 'question') {
           setQuestionCount(prev => prev + 1);
           if (data.round) setCurrentRound(data.round as string);
@@ -139,7 +144,7 @@ export function MockChat({ session, config, onBack }: Props) {
       </div>
 
       {/* 右侧参考面板 */}
-      {showContext && <ContextPanel jdText={config.jdText} resumeText={config.resumeText} collapsed={false} onToggle={() => setShowContext(false)} />}
+      {showContext && <ContextPanel jdText={config.jdText} resumeText={config.resumeText} collapsed={false} onToggle={() => setShowContext(false)} recruiterContext={recruiterContext} />}
     </div>
   );
 }

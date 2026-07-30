@@ -120,9 +120,9 @@ async function start() {
   autoSeed();
   process.stderr.write('[BOOT] autoSeed completed\n');
 
-  // 预热 OCR 引擎（后台下载 tesseract.js 语言包，避免首次图片上传超时）
-  process.stderr.write('[BOOT] about to call warmUpOcr...\n');
-  warmUpOcr();
+  // 预热 OCR 引擎（同步等待语言包下载，避免首次图片上传超时）
+  process.stderr.write('[BOOT] about to call warmUpOcr (awaiting)...\n');
+  await warmUpOcr();
   process.stderr.write('[BOOT] warmUpOcr completed\n');
 
   process.stderr.write(`[BOOT] about to listen on 0.0.0.0:${config.port}...\n`);

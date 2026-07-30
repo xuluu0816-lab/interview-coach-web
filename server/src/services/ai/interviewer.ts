@@ -1,18 +1,24 @@
 /**
  * 面试官服务 — MockInterview.skill 4角色方法论驱动
  *
- * PHASE 1 按轮次实时出题（不预存题库）：
+ * PHASE 0（RECRUITER 预备）：简历×JD交集分析 + 能力维度框架 + 命题主题
+ * PHASE 1（INTERVIEWER 面试）：按轮次实时出题 + 锁定深挖
  *   行为面 → 简历深挖 → 案例设计 → 技术领域 → 反问环节
- *   每题由后端大模型实时解析简历+JD，按当前轮次规则生成
+ *   每题由后端大模型按 RECRUITER 预备的上下文 + 当前轮次规则生成
  *
  * 角色分工：
- *   INTERVIEWER → 分轮出题 + 锁定深挖（工具→量级→判断→成果）
+ *   RECRUITER  → 简历×JD交集分析 + 维度框架 + 命题主题（Phase 0）
+ *   INTERVIEWER → 分轮出题 + 锁定深挖（工具→量级→判断→成果）（Phase 1）
  *   ASSESSOR    → 对照标准打档 + 信心盲区记录
- *
- * PHASE 2（差距报告）才做简历×JD交集分析 + 能力维度框架定义
+ *   REPORTER    → PHASE 2 差距报告
  */
-import { chatStream, chat } from './client';
-import { INTERVIEWER_DEEPDIVE_PROMPT, SYSTEM_PERSONA, ASSESSOR_SCORING_PROMPT } from './prompts';
+import { chatStream, chat, chatJSON } from './client';
+import {
+  INTERVIEWER_DEEPDIVE_PROMPT,
+  SYSTEM_PERSONA,
+  ASSESSOR_SCORING_PROMPT,
+  RECRUITER_PREP_PROMPT,
+} from './prompts';
 import { db, saveDb, interviewQuestions } from '../../db';
 import { eq, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
@@ -31,6 +37,27 @@ interface InterviewContext {
 interface InterviewSettings {
   intensity?: 'mild' | 'deep' | 'bar_raiser';
   feedbackMode?: 'practice' | 'exam';
+}
+
+/** RECRUITER 预备阶段产出（Step 0.3 + 0.4 + 0.5 主题） */
+interface RecruiterPrepResult {
+  resumeXjdMatrix: Array<{
+    experience: string;
+    category: string;
+    reason: string;
+    digDirection: string;
+  }>;
+  dimensionFramework: Array<{
+    dimension: string;
+    description: string;
+    weight: string;
+  }>;
+  questionThemes: Array<{
+    round: string;
+    theme: string;
+    targetDimension: string;
+    lockedExperience: string;
+  }>;
 }
 
 // ═══════════════════════════════════════════════
@@ -170,6 +197,39 @@ function parseQuestionTag(text: string): { question: string; category: string; s
 }
 
 // ═══════════════════════════════════════════════
+// RECRUITER 预备（Phase 0）
+// ═══════════════════════════════════════════════
+
+/** 运行 RECRUITER 预备阶段，生成交集分析 + 维度框架 + 命题主题 */
+async function runRecruiterPrep(context: InterviewContext): Promise<RecruiterPrepResult | null> {
+  // 无 JD 且无简历时跳过
+  if (!context.jdContext && !context.resumeContext) return null;
+
+  try {
+    const result = await chatJSON<RecruiterPrepResult>([
+      { role: 'system', content: SYSTEM_PERSONA },
+      { role: 'user', content: RECRUITER_PREP_PROMPT({
+        jdContext: context.jdContext,
+        resumeContext: context.resumeContext,
+        company: context.company,
+        role: context.role,
+      })},
+    ], { temperature: 0.3, maxTokens: 4096 });
+
+    // 确保字段不为 undefined
+    return {
+      resumeXjdMatrix: result.resumeXjdMatrix || [],
+      dimensionFramework: result.dimensionFramework || [],
+      questionThemes: result.questionThemes || [],
+    };
+  } catch (err: any) {
+    // RECRUITER 预备失败不阻止面试继续，降级为无上下文模式
+    process.stderr.write(`[RECRUITER] Prep failed (non-fatal): ${err.message}\n`);
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════
 // 出题函数
 // ═══════════════════════════════════════════════
 
@@ -181,6 +241,7 @@ function buildRoundPrompt(
   questionHistory: string[],
   isTransition: boolean,
   previousRound?: RoundDef,
+  recruiterPrep?: RecruiterPrepResult | null,
 ): string {
   const jdSection = context.jdContext
     ? `\n## 岗位 JD（出题核心依据）\n${context.jdContext}\n\n请严格围绕 JD 中的职责和要求设计面试题。`
@@ -194,14 +255,47 @@ function buildRoundPrompt(
     ? `\n## ⚠️ 轮次过渡\n上一轮「${previousRound.name}」已结束。请用1句话小结该轮印象，然后用 "── 第X轮 ──" 标记进入新一轮「${round.name}」。`
     : '';
 
+  // RECRUITER 预备上下文（交集分析 + 命题主题）
+  let recruiterSection = '';
+  if (recruiterPrep) {
+    const themesForRound = recruiterPrep.questionThemes
+      ?.filter(t => {
+        const themeRound = t.round || '';
+        if (round.slug === 'behavioral') return themeRound.includes('行为面');
+        if (round.slug === 'resume_deep_dive') return themeRound.includes('简历深挖');
+        if (round.slug === 'case_design') return themeRound.includes('案例设计');
+        if (round.slug === 'tech_domain') return themeRound.includes('技术领域');
+        if (round.slug === 'counter') return themeRound.includes('反问');
+        return false;
+      })
+      .map(t => `  - 主题：${t.theme}（维度: ${t.targetDimension}${t.lockedExperience ? `, 锁定: ${t.lockedExperience}` : ''}）`)
+      .join('\n') || '';
+
+    const matrixSummary = recruiterPrep.resumeXjdMatrix
+      ?.map(m => `  - ${m.category}: ${m.experience} → ${m.digDirection}`)
+      .join('\n') || '';
+
+    recruiterSection = `
+## RECRUITER 预备结果（Step 0.3 + 0.4 + 0.5 — 已完成，直接使用）
+
+### 简历×JD 交集分析
+${matrixSummary || '（无简历，跳过）'}
+
+### 能力维度框架
+${recruiterPrep.dimensionFramework?.map(d => `  - ${d.dimension}: ${d.description}（权重: ${d.weight}）`).join('\n') || '未定义'}
+
+### 本轮命题主题指引
+${themesForRound || '（无预设主题，按轮次规则自由出题）'}
+`;
+  }
+
   return `${SYSTEM_PERSONA}\n\n${INTERVIEWER_DEEPDIVE_PROMPT}
 
 ## 面试背景
 - 目标公司：${context.company || '未指定'}
 - 目标岗位：${context.role || '产品经理'}
 - 经验水平：${context.level || 'entry'}
-${jdSection}${resumeSection}
-
+${jdSection}${resumeSection}${recruiterSection}
 ## 当前轮次：${round.name}（本轮第 ${questionIndex} 题 / 最多 ${round.maxQuestions} 题）
 - 侧重：${round.focus}
 - 题型要求：${round.questionType}
@@ -212,6 +306,7 @@ ${transitionNote}
 ${questionHistory.length > 0 ? questionHistory.map((q, i) => `${i + 1}. ${q}`).join('\n') : '尚未出题'}
 
 ## 注意
+- RECRUITER 预备已做完，直接出题，不要输出 RECRUITER/Phase 0 相关文本
 - 严格按照「${round.name}」轮次的侧重出题
 - 每题锁定 JD 中的具体职责要求
 ${context.resumeContext ? '- 优先锁定简历中具体经历的动作出题' : ''}
@@ -227,9 +322,10 @@ async function generateRoundQuestion(
   questionHistory: string[],
   isTransition: boolean,
   previousRound?: RoundDef,
+  recruiterPrep?: RecruiterPrepResult | null,
   onToken?: (t: string) => void,
 ): Promise<{ questionText: string; category: string; subCategory: string }> {
-  const systemPrompt = buildRoundPrompt(context, round, questionIndex, questionHistory, isTransition, previousRound);
+  const systemPrompt = buildRoundPrompt(context, round, questionIndex, questionHistory, isTransition, previousRound, recruiterPrep);
 
   const userPrompt = isTransition
     ? `请过渡到「${round.name}」轮次，出本轮第1题。`
@@ -278,6 +374,19 @@ async function generateFollowUp(
 }
 
 // ═══════════════════════════════════════════════
+// RECRUITER 上下文缓存（跨多次请求复用，避免重复调用 AI）
+// ═══════════════════════════════════════════════
+const recruiterCache = new Map<string, RecruiterPrepResult | null>();
+
+function getCachedRecruiterPrep(sessionId: string): RecruiterPrepResult | null {
+  return recruiterCache.get(sessionId) ?? null;
+}
+
+function setCachedRecruiterPrep(sessionId: string, prep: RecruiterPrepResult | null): void {
+  recruiterCache.set(sessionId, prep);
+}
+
+// ═══════════════════════════════════════════════
 // 主入口
 // ═══════════════════════════════════════════════
 
@@ -302,15 +411,41 @@ export async function streamInterviewChat(
   );
 
   // ═══════════════════════════════════════
-  // START — 直接开始 PHASE 1 第一轮第一题
+  // START — RECRUITER 预备（Phase 0）→ 第一轮第一题（Phase 1）
   // ═══════════════════════════════════════
   if (action === 'start' || existingQuestions.length === 0) {
     const { round, questionIndex } = determineNextRound(existingQuestions, hasResume);
 
     try {
+      // Phase 0: RECRUITER 预备 —— 交集分析 + 维度框架 + 命题主题
+      const hasInput = !!(context.jdContext || context.resumeContext);
+      let recruiterPrep: RecruiterPrepResult | null = null;
+
+      if (hasInput) {
+        // 先检查缓存
+        recruiterPrep = getCachedRecruiterPrep(context.sessionId);
+        if (!recruiterPrep) {
+          // 发送进度提示
+          onEvent({ type: 'token', data: { text: '🔍 RECRUITER 正在分析 JD 与简历…\n\n' } });
+          recruiterPrep = await runRecruiterPrep(context);
+          setCachedRecruiterPrep(context.sessionId, recruiterPrep);
+
+          // 发送 RECRUITER 预备结果给客户端（交集分析 + 维度框架可见）
+          if (recruiterPrep) {
+            onEvent({ type: 'recruiter_context', data: {
+              resumeXjdMatrix: recruiterPrep.resumeXjdMatrix,
+              dimensionFramework: recruiterPrep.dimensionFramework,
+            }});
+            // 短暂停顿后清掉"正在分析"的文本，由客户端替换为正式内容
+            onEvent({ type: 'token', data: { text: '\n✅ 分析完成，开始面试。\n\n' } });
+          }
+        }
+      }
+
+      // Phase 1: 生成第一题（使用 RECRUITER 上下文）
       const { questionText, category, subCategory } = await generateRoundQuestion(
         context, round, questionIndex, questionHistory, false,
-        undefined,
+        undefined, recruiterPrep,
         (token) => onEvent({ type: 'token', data: { text: token } }),
       );
 
@@ -321,7 +456,13 @@ export async function streamInterviewChat(
         category: category as QuestionCategory,
         sub_category: subCategory as QuestionSubCategory,
         sequence: 1,
-        feedback: JSON.stringify({ round: round.name, roundSlug: round.slug, roundIndex: 1, hasResume }),
+        feedback: JSON.stringify({
+          round: round.name,
+          roundSlug: round.slug,
+          roundIndex: 1,
+          hasResume,
+          recruiterReady: !!recruiterPrep,
+        }),
       }).run();
       saveDb();
 
@@ -384,15 +525,17 @@ export async function streamInterviewChat(
   }
 
   // ═══════════════════════════════════════
-  // NEXT — 实时生成下一题（按轮次规则）
+  // NEXT — 实时生成下一题（按轮次规则，使用 RECRUITER 缓存上下文）
   // ═══════════════════════════════════════
   if (action === 'next_question') {
     const { round, questionIndex, isTransition, previousRound } = determineNextRound(existingQuestions, hasResume);
     const sequence = existingQuestions.length + 1;
+    const recruiterPrep = getCachedRecruiterPrep(context.sessionId);
 
     try {
       const { questionText, category, subCategory } = await generateRoundQuestion(
         context, round, questionIndex, questionHistory, isTransition, previousRound,
+        recruiterPrep,
         (token) => onEvent({ type: 'token', data: { text: token } }),
       );
 
@@ -403,7 +546,13 @@ export async function streamInterviewChat(
         category: category as QuestionCategory,
         sub_category: subCategory as QuestionSubCategory,
         sequence,
-        feedback: JSON.stringify({ round: round.name, roundSlug: round.slug, roundIndex: questionIndex, hasResume }),
+        feedback: JSON.stringify({
+          round: round.name,
+          roundSlug: round.slug,
+          roundIndex: questionIndex,
+          hasResume,
+          recruiterReady: !!recruiterPrep,
+        }),
       }).run();
       saveDb();
 

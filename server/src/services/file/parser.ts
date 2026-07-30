@@ -9,51 +9,83 @@ import { FileType } from '../../types';
 // ── tesseract.js 单例 worker（避免重复加载语言包）──
 let _worker: any = null;
 let _workerLoading: Promise<any> | null = null;
+let _ocrStatus: 'unloaded' | 'loading' | 'ready' | 'error' = 'unloaded';
+let _ocrError: string = '';
+
+export function getOcrStatus(): { status: string; error?: string } {
+  return { status: _ocrStatus, error: _ocrError || undefined };
+}
 
 async function getOcrWorker(): Promise<any> {
   if (_worker) return _worker;
   if (_workerLoading) return _workerLoading;
 
+  _ocrStatus = 'loading';
   _workerLoading = (async () => {
-    const { createWorker } = require('tesseract.js');
-    _worker = await createWorker('chi_sim+eng', 1, {
-      logger: (m: any) => {
-        if (m.status === 'error') console.error('Tesseract OCR error:', m);
-        else if (m.status === 'loading language traineddata') console.log(`Tesseract: ${m.status} (${Math.round(m.progress * 100)}%)`);
-        else console.log(`Tesseract: ${m.status}`);
-      },
-    });
-    return _worker;
+    try {
+      const { createWorker } = require('tesseract.js');
+      // 只加载中文语言包（面试场景以中文简历/JD为主，节省 ~15MB 内存）
+      _worker = await createWorker('chi_sim', 1, {
+        logger: (m: any) => {
+          if (m.status === 'error') {
+            console.error('Tesseract OCR error:', m);
+            _ocrError = String(m);
+          } else if (m.status === 'loading language traineddata') {
+            console.log(`Tesseract: ${m.status} (${Math.round(m.progress * 100)}%)`);
+          }
+        },
+      });
+      _ocrStatus = 'ready';
+      _ocrError = '';
+      return _worker;
+    } catch (err: any) {
+      _ocrStatus = 'error';
+      _ocrError = err.message || String(err);
+      _workerLoading = null; // 允许重试
+      throw err;
+    }
   })();
 
   return _workerLoading;
 }
 
-/** 服务启动时预热 OCR 引擎（下载语言包，避免首次请求超时） */
+/** 服务启动时预热 OCR 引擎（同步等待，确保首次图片上传时 OCR 已就绪） */
 export async function warmUpOcr(): Promise<void> {
-  console.log('Warming up tesseract.js OCR engine...');
+  console.log('Warming up tesseract.js OCR engine (chi_sim only)...');
+  const startTime = Date.now();
   try {
     await getOcrWorker();
-    console.log('Tesseract.js OCR engine ready.');
+    console.log(`Tesseract.js OCR engine ready (took ${Date.now() - startTime}ms).`);
   } catch (err: any) {
-    console.warn('OCR warm-up failed (non-fatal, will retry on first image upload):', err.message);
+    console.error(`OCR warm-up FAILED after ${Date.now() - startTime}ms: ${err.message}`);
+    console.error('Image uploads will not work until OCR is fixed. PDF/DOCX/TXT uploads are unaffected.');
+    // 不阻止服务启动，允许非图片文件继续工作
   }
 }
 
 /**
  * 使用 tesseract.js 本地 OCR 识别图片文字
- * 支持中文 + 英文混合识别
+ * 支持中文识别（面试场景以中文简历/JD为主）
  */
 async function ocrImage(filePath: string): Promise<string> {
+  // 检查模块是否存在
+  try {
+    require.resolve('tesseract.js');
+  } catch {
+    throw new Error('OCR 引擎未安装，图片格式暂不支持。请使用 PDF / Word / TXT 格式上传，或将图片中的文字手动粘贴。');
+  }
+
   try {
     const worker = await getOcrWorker();
     const { data: { text } } = await worker.recognize(filePath);
     const trimmed = text?.trim() || '';
-    if (!trimmed) throw new Error('OCR 未能识别到文字，请确认图片清晰度');
+    if (!trimmed) {
+      throw new Error('OCR 未能识别到文字。请确认：①图片清晰度 ②文字方向 ③建议使用 PDF/TXT 格式上传。');
+    }
     return trimmed;
   } catch (err: any) {
-    if (err.message?.includes('Cannot find module')) {
-      throw new Error('tesseract.js 未安装，请运行: npm install tesseract.js');
+    if (err.message?.includes('Failed to fetch') || err.message?.includes('Network')) {
+      throw new Error('OCR 引擎加载超时（Render 免费服务器内存限制），请使用 PDF / Word / TXT 格式上传。');
     }
     throw new Error(`图片 OCR 识别失败: ${err.message}`);
   }

@@ -48,6 +48,21 @@ export interface MockInterviewConfig {
 }
 export interface RealTimeFeedback { questionId: string; scores: Scores; total: number; quickTips: string; deepDiveSuggestion?: string; }
 
+/** RECRUITER 预备阶段结果（Step 0.3 + 0.4） */
+export interface RecruiterContext {
+  resumeXjdMatrix?: Array<{
+    experience: string;
+    category: string;
+    reason: string;
+    digDirection: string;
+  }>;
+  dimensionFramework?: Array<{
+    dimension: string;
+    description: string;
+    weight: string;
+  }>;
+}
+
 // ===== 模块3: 投递追踪（7阶段） =====
 export type ApplicationStage = 'resume_submitted' | 'written_test' | 'ai_interview' | 'first_round' | 'second_round' | 'third_round' | 'final';
 export const APP_STAGES: ApplicationStage[] = ['resume_submitted', 'written_test', 'ai_interview', 'first_round', 'second_round', 'third_round', 'final'];
