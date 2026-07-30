@@ -505,6 +505,7 @@ export async function streamInterviewChat(
     const shouldDeepDive = message.length < deepDiveThreshold;
 
     if (shouldDeepDive) {
+      // 答案太短/太空 → 深挖追问
       try {
         await generateFollowUp(context, currentQ, message, settings.intensity || 'deep',
           (token) => onEvent({ type: 'token', data: { text: token } }),
@@ -514,12 +515,63 @@ export async function streamInterviewChat(
         onEvent({ type: 'error', data: { message: err.message } });
       }
     } else {
-      if (settings.feedbackMode === 'practice') {
-        onEvent({ type: 'token', data: { text: '好的，了解了。' } });
-      } else {
-        onEvent({ type: 'token', data: { text: '好的。' } });
+      // 答案已充分 → 自动进入下一题（不再只回"好的"让用户手动点跳过）
+      const { round, questionIndex, isTransition, previousRound } = determineNextRound(existingQuestions, hasResume);
+      const sequence = existingQuestions.length + 1;
+      const recruiterPrep = getCachedRecruiterPrep(context.sessionId);
+
+      // 先回一句简短过渡，然后流式出下一题
+      const transitionText = isTransition && previousRound
+        ? `好的。── ${round.name} ──\n` : '好的，下一题。\n';
+      let transitionTextSent = false;
+
+      try {
+        const { questionText, category, subCategory } = await generateRoundQuestion(
+          context, round, questionIndex, questionHistory, isTransition, previousRound,
+          recruiterPrep,
+          (token) => {
+            // 首个 token 前先发过渡文本
+            if (!transitionTextSent) {
+              onEvent({ type: 'token', data: { text: transitionText } });
+              transitionTextSent = true;
+            }
+            onEvent({ type: 'token', data: { text: token } });
+          },
+        );
+        // 兜底：如果模型没产生任何 token（极端情况）也把过渡文本发了
+        if (!transitionTextSent) {
+          onEvent({ type: 'token', data: { text: transitionText } });
+        }
+
+        const qId = uuidv4();
+        db().insert(interviewQuestions).values({
+          id: qId, session_id: context.sessionId,
+          question_text: questionText,
+          category: category as QuestionCategory,
+          sub_category: subCategory as QuestionSubCategory,
+          sequence,
+          feedback: JSON.stringify({
+            round: round.name, roundSlug: round.slug, roundIndex: questionIndex,
+            hasResume, recruiterReady: !!recruiterPrep,
+          }),
+        }).run();
+        saveDb();
+
+        onEvent({ type: 'question', data: {
+          question_id: qId,
+          category: `${category}${subCategory ? '-' + subCategory : ''}`,
+          text: questionText,
+          sequence,
+          round: round.name,
+          roundIndex: questionIndex,
+          isTransition,
+        }});
+        onEvent({ type: 'done', data: { question_id: qId } });
+      } catch (err: any) {
+        // 自动生成下一题失败 → 降级为原来的"好的"提示
+        onEvent({ type: 'token', data: { text: '好的，了解了。请点击"跳过"进入下一题。' } });
+        onEvent({ type: 'done', data: { question_id: currentQ.id, review_signal: true, feedbackMode: settings.feedbackMode } });
       }
-      onEvent({ type: 'done', data: { question_id: currentQ.id, review_signal: true, feedbackMode: settings.feedbackMode } });
     }
     return;
   }
