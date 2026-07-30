@@ -24,8 +24,7 @@ export function MockChat({ session, config, onBack }: Props) {
   const [showContext, setShowContext] = useState(false);
   const [feedback, setFeedback] = useState<RealTimeFeedback | null>(null);
   const [confidence, setConfidence] = useState(3); // 信心自评 1-5
-  const [recruiterInfo, setRecruiterInfo] = useState<any>(null); // PHASE 0 RECRUITER 结果
-  const [totalQuestions, setTotalQuestions] = useState(0); // 预生成总题数
+  const [currentRound, setCurrentRound] = useState('行为面'); // 当前轮次
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -38,21 +37,9 @@ export function MockChat({ session, config, onBack }: Props) {
     streamChat(session.id, action, msg, confidence,
       (token) => { fullStream += token; setStreamingText(fullStream); },
       (type, data) => {
-        if (type === 'recruiter_progress') {
-          setMessages(prev => [...prev, { role: 'system', content: `🔍 ${data.message}` }]);
-        }
-        if (type === 'recruiter_done') {
-          if (data.questionCount) {
-            setTotalQuestions(data.questionCount as number);
-            setRecruiterInfo(data);
-            setMessages(prev => [...prev, {
-              role: 'system',
-              content: `📋 题库已生成：${data.questionCount} 题，覆盖 ${(data.rounds as string[])?.join(' → ')}${data.resumeXjdMatrix?.length ? `\n📊 简历×JD交集：${(data.resumeXjdMatrix as any[])?.length} 条经历已标注` : ''}`,
-            }]);
-          }
-        }
         if (type === 'question') {
           setQuestionCount(prev => prev + 1);
+          if (data.round) setCurrentRound(data.round as string);
           setMessages(prev => [...prev, { role: 'interviewer', content: fullStream || data.text as string, isQuestion: true, category: data.category as string }]);
           setStreamingText(''); fullStream = '';
         }
@@ -102,7 +89,7 @@ export function MockChat({ session, config, onBack }: Props) {
       {/* 对话区 */}
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3"><Button variant="ghost" onClick={onBack} size="sm"><ArrowLeft className="w-4 h-4" /></Button><div><h2 className="font-semibold">AI模拟面试</h2><p className="text-xs text-gray-400">第 {questionCount}{totalQuestions > 0 ? `/${totalQuestions}` : ''} 题 | {config.feedbackMode === 'practice' ? '练习模式' : '考试模式'} | {config.intensity === 'mild' ? '温和HR' : config.intensity === 'deep' ? '深挖技术' : 'Bar-raiser'}</p></div></div>
+          <div className="flex items-center gap-3"><Button variant="ghost" onClick={onBack} size="sm"><ArrowLeft className="w-4 h-4" /></Button><div><h2 className="font-semibold">AI模拟面试</h2><p className="text-xs text-gray-400">第 {questionCount} 题 · {currentRound} · {config.feedbackMode === 'practice' ? '练习模式' : '考试模式'} · {config.intensity === 'mild' ? '温和HR' : config.intensity === 'deep' ? '深挖技术' : 'Bar-raiser'}</p></div></div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setShowContext(!showContext)}><PanelRight className="w-4 h-4 mr-1" />JD/简历</Button>
             <Button variant="outline" size="sm" onClick={handleSkip} disabled={isStreaming}><SkipForward className="w-4 h-4 mr-1" />跳过</Button>
@@ -170,6 +157,61 @@ function GapReportView({ report }: { report: any }) {
         <div className="bg-gray-50 border rounded-lg p-4">
           <p className="text-sm font-medium text-gray-700 mb-1">总体印象</p>
           <p className="text-sm text-gray-600">{report.overallImpression}</p>
+        </div>
+      )}
+
+      {/* Step 0.3 简历×JD交集分析（仅 JD+简历模式） */}
+      {report.resumeXjdMatrix?.length > 0 && (
+        <div className="border rounded-lg p-4">
+          <p className="text-sm font-medium text-gray-700 mb-3">📋 简历 × JD 交集分析（Step 0.3）</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b text-left text-gray-500">
+                  <th className="pb-2 pr-2">经历</th>
+                  <th className="pb-2 pr-2">类别</th>
+                  <th className="pb-2 pr-2">判断依据</th>
+                  <th className="pb-2">深挖方向</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.resumeXjdMatrix.map((m: any, i: number) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-2 pr-2 font-medium">{m.experience}</td>
+                    <td className="py-2 pr-2">
+                      <Badge className={cn(
+                        'text-xs',
+                        m.category?.includes('①') ? 'bg-green-50 text-green-700' :
+                        m.category?.includes('②') ? 'bg-yellow-50 text-yellow-700' :
+                        'bg-red-50 text-red-700',
+                      )}>{m.category}</Badge>
+                    </td>
+                    <td className="py-2 pr-2 text-gray-500">{m.reason}</td>
+                    <td className="py-2 text-gray-600">{m.digDirection}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Step 0.4 能力维度框架 */}
+      {report.dimensionFramework?.length > 0 && (
+        <div className="border rounded-lg p-4">
+          <p className="text-sm font-medium text-gray-700 mb-3">🎯 能力维度框架（Step 0.4）</p>
+          <div className="space-y-2">
+            {report.dimensionFramework.map((d: any, i: number) => (
+              <div key={i} className="flex items-center gap-3 text-xs">
+                <span className="font-medium w-24 text-gray-700">{d.dimension}</span>
+                <span className="flex-1 text-gray-500">{d.description}</span>
+                <Badge className={cn(
+                  'text-xs',
+                  d.weight === '高' ? 'bg-red-50 text-red-700' : d.weight === '中' ? 'bg-yellow-50 text-yellow-700' : 'bg-gray-50 text-gray-600',
+                )}>权重：{d.weight}</Badge>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
